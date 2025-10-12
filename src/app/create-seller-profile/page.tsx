@@ -6,8 +6,11 @@ import { addDoc, collection } from "firebase/firestore";
 import { useState } from "react";
 import TextField from "@mui/material/TextField";
 import { Button, LinearProgress, Typography } from "@mui/material";
+import { useRouter } from "next/navigation";
 
 export default function CreateSellerProfile() {
+  const router = useRouter();
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [country, setCountry] = useState("");
@@ -15,13 +18,22 @@ export default function CreateSellerProfile() {
   const [cityArea, setCityArea] = useState("");
   const [personalBackground, setPersonalBackground] = useState("");
   const [personalTraits, setPersonalTraits] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [emailAddress, setEmailAddress] = useState("");
   const [step, setStep] = useState(0);
 
   async function submitData() {
     try {
       await addDoc(collection(db, "test"), {
         name: firstName,
-        country: lastName,
+        lastName: lastName,
+        country: country,
+        city: city,
+        cityArea: cityArea,
+        personalBackground: personalBackground,
+        personalTraits: personalTraits,
+        phoneNumber: phoneNumber,
+        emailAddress: emailAddress,
       });
     } catch (err) {
       const e = err as unknown;
@@ -31,6 +43,7 @@ export default function CreateSellerProfile() {
         console.error("Unknown error:", e);
       }
     } finally {
+      router.replace("/");
       console.log("Document has been added");
     }
   }
@@ -83,6 +96,7 @@ export default function CreateSellerProfile() {
               }}
             />
             <TextField
+              value={city}
               label="City"
               variant="outlined"
               onChange={(event) => {
@@ -90,6 +104,7 @@ export default function CreateSellerProfile() {
               }}
             />
             <TextField
+              value={cityArea}
               label="City Area(opt.)"
               variant="outlined"
               onChange={(event) => {
@@ -113,6 +128,7 @@ export default function CreateSellerProfile() {
             style={{ display: "grid", gap: "1rem", marginBottom: "2rem" }}
           >
             <TextField
+              value={personalBackground}
               label="Personal Background"
               variant="outlined"
               style={{ textAlign: "left" }}
@@ -139,6 +155,7 @@ export default function CreateSellerProfile() {
             style={{ display: "grid", gap: "1rem", marginBottom: "2rem" }}
           >
             <TextField
+              value={personalTraits}
               label="Personal Traits"
               variant="outlined"
               style={{ textAlign: "left" }}
@@ -158,11 +175,44 @@ export default function CreateSellerProfile() {
             </Button>
           </div>
         );
+
+      case 4:
+        return (
+          <div
+            className="contact"
+            style={{ display: "grid", gap: "1rem", marginBottom: "2rem" }}
+          >
+            <TextField
+              value={phoneNumber}
+              label="Phone Number"
+              variant="outlined"
+              onChange={(event) => {
+                setPhoneNumber(event.target.value);
+              }}
+            />
+            <TextField
+              value={emailAddress}
+              label="Email Address"
+              variant="outlined"
+              onChange={(event) => {
+                setEmailAddress(event.target.value);
+              }}
+            />
+            <Button
+              onClick={() => {
+                setStep(step + 1);
+              }}
+              variant="contained"
+            >
+              Next
+            </Button>
+          </div>
+        );
     }
   }
 
   function calculateProgress(step: number) {
-    return Math.round((step * 100) / 4);
+    return Math.round((step * 100) / 5);
   }
 
   function reviewDataEntered() {
@@ -175,6 +225,8 @@ export default function CreateSellerProfile() {
         <Typography>{cityArea}</Typography>
         <Typography>{personalBackground}</Typography>
         <Typography>{personalTraits}</Typography>
+        <Typography>{phoneNumber}</Typography>
+        <Typography>{emailAddress}</Typography>
         <Button
           variant="contained"
           onClick={() => {
@@ -195,7 +247,7 @@ export default function CreateSellerProfile() {
       />
       {calculateProgress(step)}
       {contentPicker(step)}
-      {step === 4 && reviewDataEntered()}
+      {step === 5 && reviewDataEntered()}
     </div>
   );
 }
