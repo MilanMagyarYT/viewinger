@@ -2,7 +2,6 @@
 
 import ProfileOverview from "@/components/ProfileOverview";
 import SellerHeader from "@/components/SellerHeader";
-import { Button } from "@mui/material";
 import { getAuth } from "firebase/auth";
 import { useEffect, useState } from "react";
 

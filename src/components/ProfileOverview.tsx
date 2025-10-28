@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import {
   Avatar,
@@ -20,6 +22,8 @@ import ModeEditOutlineIcon from "@mui/icons-material/ModeEditOutline";
 import ShareOutlinedIcon from "@mui/icons-material/ShareOutlined";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import { useEffect, useState } from "react";
+import { getAuth } from "firebase/auth";
 
 export default function ProfileOverview() {
   const [displayName, setDisplayName] = useState("");
