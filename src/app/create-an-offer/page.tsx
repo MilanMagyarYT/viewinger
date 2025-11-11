@@ -1,9 +1,17 @@
 "use client";
 
-import { Avatar, Button, Stack, TextField, Typography } from "@mui/material";
+import React, { useState } from "react";
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Paper,
+  Stack,
+  Avatar,
+} from "@mui/material";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-
+import MenuBar from "@/components/MenuBar";
 import {
   addDoc,
   collection,
@@ -23,73 +31,13 @@ export default function CreateAnOffer() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
   const [area, setArea] = useState("");
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
 
-  // Handles the data upload of the Offer created.
-  async function handleDataUplaod(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
-    try {
-      const offer = {
-        name,
-        title,
-        description,
-        city,
-        area: Number(area),
-        price: Number(price),
-        currency,
-        email,
-        phone: phone || null,
-        imageURL: null,
-        createdAt: serverTimestamp(),
-      };
-
-      const offersCol = collection(db, "offers");
-      const docRef = await addDoc(offersCol, offer);
-
-      if (file) {
-        const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
-        const unsignedPreset =
-          process.env.NEXT_PUBLIC_CLOUDINARY_UNSIGNED_PRESET!;
-
-        if (!cloudName || !unsignedPreset) {
-          throw new Error("Missing Cloudinary env vars. Check .env.local");
-        }
-
-        const form = new FormData();
-        form.append("file", file);
-        form.append("upload_preset", unsignedPreset);
-        form.append("folder", `offers/${docRef.id}`);
-
-        const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-          { method: "POST", body: form }
-        );
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`Cloudinary upload failed: ${text}`);
-        }
-
-        const data = await res.json();
-        const imageURL = data.secure_url;
-
-        await updateDoc(doc(db, "offers", docRef.id), {
-          imageURL,
-          cloudinaryPublicId: data.public_id,
-        });
-      }
-
-      router.replace("/my-dashboard");
-    } catch (err) {
-      console.error("Offer submit failed:", err);
-    }
-  }
-
-  // Hnadles the uploaded files size, and compresses it in case it is too big.
+  // --- FILE HANDLING + COMPRESSION (unchanged from your logic) ---
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -111,7 +59,6 @@ export default function CreateAnOffer() {
     setPreview(URL.createObjectURL(toUse));
   };
 
-  // Handles the compressing logic for the files uploaded as the Images for the offer cover picture.
   async function compressImage(
     file: File,
     { maxWidth = 1600, quality = 0.8 } = {}
@@ -150,116 +97,243 @@ export default function CreateAnOffer() {
     });
   }
 
+  // --- FIREBASE UPLOAD ---
+  async function handleDataUpload(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    try {
+      const offer = {
+        name,
+        title,
+        description,
+        city,
+        country,
+        area: Number(area),
+        price: Number(price),
+        currency,
+        email,
+        phone: phone || null,
+        imageURL: null,
+        createdAt: serverTimestamp(),
+      };
+
+      const offersCol = collection(db, "offers");
+      const docRef = await addDoc(offersCol, offer);
+
+      if (file) {
+        const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
+        const unsignedPreset =
+          process.env.NEXT_PUBLIC_CLOUDINARY_UNSIGNED_PRESET!;
+
+        const form = new FormData();
+        form.append("file", file);
+        form.append("upload_preset", unsignedPreset);
+        form.append("folder", `offers/${docRef.id}`);
+
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+          { method: "POST", body: form }
+        );
+        const data = await res.json();
+
+        await updateDoc(doc(db, "offers", docRef.id), {
+          imageURL: data.secure_url,
+          cloudinaryPublicId: data.public_id,
+        });
+      }
+
+      router.replace("/my-dashboard");
+    } catch (err) {
+      console.error("Offer submit failed:", err);
+    }
+  }
+
+  // --- UI ---
   return (
-    <div style={{ display: "grid", gap: "1rem", maxWidth: 420 }}>
-      <Typography variant="h5">Create An Offer</Typography>
+    <Box
+      sx={{ width: "100vw", minHeight: "100vh", backgroundColor: "#FFFFFF" }}
+    >
+      <MenuBar />
 
-      <form
-        onSubmit={handleDataUplaod}
-        style={{ display: "grid", gap: "1rem" }}
+      {/* Header Section */}
+      <Box
+        sx={{
+          backgroundColor: "#0F3EA3",
+          py: 6,
+          textAlign: "center",
+          marginTop: "3rem",
+        }}
       >
-        <TextField
-          label="Name of the Person FulFilling Offer"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="name"
-          required
-        />
-        <TextField
-          label="Title of the Offer"
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          autoComplete="title"
-          required
-        />
-        <TextField
-          label="Description of the Offer"
-          type="text"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          autoComplete="description"
-          required
-        />
-        <TextField
-          label="City where I will go for Viewings"
-          type="text"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          autoComplete="city"
-          required
-        />
-        <TextField
-          label="Distance from City Center of the City"
-          type="number"
-          value={area}
-          onChange={(e) => setArea(e.target.value)}
-          autoComplete="area"
-          required
-        />
-        <TextField
-          label="Price for a Viewing"
-          type="number"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          autoComplete="price"
-          required
-        />
-        <TextField
-          label="Currency of the Offer"
-          type="text"
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
-          autoComplete="currency"
-          required
-        />
-        <TextField
-          label="Email where to be Contacted"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-          required
-        />
-        <TextField
-          label="Phone where to be Contacted"
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          autoComplete="tel"
-          required={false}
-        />
+        <Typography
+          variant="h4"
+          sx={{ color: "#FFFFFF", fontWeight: 700, mb: 1 }}
+        >
+          Create an Offer
+        </Typography>
+        <Typography variant="subtitle1" sx={{ color: "rgba(255,255,255,0.9)" }}>
+          Share your availability and help others discover properties worldwide.
+        </Typography>
+      </Box>
 
-        <Stack spacing={2}>
-          <Typography>
-            Images for the Offer Cover Picture - Portfolio
-          </Typography>
-          <Button component="label" variant="contained">
-            Choose image
-            <input
-              hidden
-              type="file"
-              name="image"
-              accept="image/*"
-              onChange={handleFile}
+      {/* Form Section */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          py: 6,
+          px: 2,
+        }}
+      >
+        <Paper
+          elevation={4}
+          sx={{
+            p: 4,
+            borderRadius: "16px",
+            width: "100%",
+            maxWidth: 600,
+            backgroundColor: "#F9FAFF",
+          }}
+        >
+          <form
+            onSubmit={handleDataUpload}
+            style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}
+          >
+            <TextField
+              label="Name of the person fulfilling the offer"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              fullWidth
             />
-          </Button>
-
-          {preview && (
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <Avatar
-                src={preview}
-                alt="preview"
-                sx={{ width: 56, height: 56 }}
+            <TextField
+              label="Title of the offer"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              fullWidth
+            />
+            <TextField
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              multiline
+              minRows={3}
+              required
+              fullWidth
+            />
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="City"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                required
+                fullWidth
               />
-              <span>{file?.name}</span>
+              <TextField
+                label="Country"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                required
+                fullWidth
+              />
             </Stack>
-          )}
-        </Stack>
+            <TextField
+              label="Distance from city center (km)"
+              type="number"
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              required
+              fullWidth
+            />
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Price for a viewing"
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                required
+                fullWidth
+              />
+              <TextField
+                label="Currency"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                required
+                fullWidth
+              />
+            </Stack>
+            <TextField
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              fullWidth
+            />
+            <TextField
+              label="Phone (optional)"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              fullWidth
+            />
 
-        <Button type="submit">Submit</Button>
-      </form>
-    </div>
+            {/* Image Upload */}
+            <Stack spacing={2} sx={{ mt: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                Offer cover picture
+              </Typography>
+              <Button
+                component="label"
+                variant="contained"
+                sx={{
+                  backgroundColor: "#2054CC",
+                  color: "#FFFFFF",
+                  textTransform: "none",
+                  "&:hover": { backgroundColor: "#6C8DFF" },
+                  alignSelf: "flex-start",
+                }}
+              >
+                Choose Image
+                <input
+                  hidden
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFile}
+                />
+              </Button>
+
+              {preview && (
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <Avatar
+                    src={preview}
+                    alt="preview"
+                    sx={{ width: 56, height: 56 }}
+                  />
+                  <Typography variant="body2">{file?.name}</Typography>
+                </Stack>
+              )}
+            </Stack>
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              variant="contained"
+              sx={{
+                mt: 3,
+                backgroundColor: "#0F3EA3",
+                color: "#FFFFFF",
+                fontWeight: 600,
+                textTransform: "none",
+                py: 1.5,
+                "&:hover": { backgroundColor: "#2054CC" },
+              }}
+            >
+              Submit Offer
+            </Button>
+          </form>
+        </Paper>
+      </Box>
+    </Box>
   );
 }
