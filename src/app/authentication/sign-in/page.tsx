@@ -1,18 +1,27 @@
 "use client";
 
-import { auth, googleProvider } from "@/firebase";
-import { Button, Divider, TextField, Typography } from "@mui/material";
+import React, { useState, useEffect } from "react";
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Divider,
+  Paper,
+  Stack,
+  CircularProgress,
+} from "@mui/material";
+import { useRouter } from "next/navigation";
 import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  UserCredential,
   sendPasswordResetEmail,
+  UserCredential,
+  getAdditionalUserInfo,
 } from "firebase/auth";
-import { getAdditionalUserInfo } from "firebase/auth";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { auth, googleProvider } from "@/firebase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,9 +34,7 @@ export default function LoginPage() {
     const info = getAdditionalUserInfo(result);
     const isNewUser = !!info?.isNewUser;
     console.log("Signed in:", user.uid, { isNewUser });
-
-    // send them wherever your app expects after login
-    router.replace("/dashboard"); // or "/create-seller-profile" if that’s your first-run flow
+    router.replace("/my-dashboard");
   }
 
   function surfaceAuthError(error: any) {
@@ -35,30 +42,15 @@ export default function LoginPage() {
       "auth/user-not-found": "No account found with this email.",
       "auth/wrong-password": "Incorrect password. Try again.",
       "auth/invalid-credential": "Invalid credentials. Please try again.",
-      "auth/account-exists-with-different-credential":
-        "This email uses a different sign-in method. Try that method instead.",
-      "auth/cancelled-popup-request":
-        "Another sign-in is already in progress. Try again.",
-      "auth/popup-blocked":
-        "Your browser blocked the sign-in popup. We’ll try a full-page redirect.",
-      "auth/popup-closed-by-user":
-        "The popup was closed before finishing. Please try again.",
-      "auth/network-request-failed":
-        "Network error—check your connection and try again.",
     };
-    const msg = map[error?.code] || error?.message || "Sign-in failed.";
-    console.error("Auth error:", error);
-    alert(msg);
+    alert(map[error?.code] || error?.message || "Sign-in failed.");
+    console.error(error);
   }
 
-  // Pick up result if we fell back to signInWithRedirect
   useEffect(() => {
     getRedirectResult(auth)
-      .then((result) => {
-        if (result) handleAuthResult(result);
-      })
+      .then((result) => result && handleAuthResult(result))
       .catch(surfaceAuthError);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleEmailSignIn(e?: React.FormEvent) {
@@ -85,12 +77,7 @@ export default function LoginPage() {
         err?.code === "auth/popup-blocked" ||
         err?.code === "auth/popup-closed-by-user"
       ) {
-        try {
-          await signInWithRedirect(auth, googleProvider);
-          return; // flow continues after redirect
-        } catch (redirectErr) {
-          surfaceAuthError(redirectErr);
-        }
+        await signInWithRedirect(auth, googleProvider);
       } else {
         surfaceAuthError(err);
       }
@@ -100,10 +87,7 @@ export default function LoginPage() {
   }
 
   async function handleForgotPassword() {
-    if (!email) {
-      alert("Enter your email first to receive a reset link.");
-      return;
-    }
+    if (!email) return alert("Enter your email to receive a reset link.");
     try {
       setLoading(true);
       await sendPasswordResetEmail(auth, email);
@@ -115,60 +99,151 @@ export default function LoginPage() {
     }
   }
 
+  // -------- JSX ----------
   return (
-    <div style={{ display: "grid", gap: "1rem", maxWidth: 420 }}>
-      <Typography variant="h5">Sign in</Typography>
-
-      <Typography variant="body2">
-        New here?{" "}
-        <Button
-          onClick={() => router.replace("/authentication/create-account")}
-          size="small"
-        >
-          Create an account
-        </Button>
-      </Typography>
-
-      <form
-        onSubmit={handleEmailSignIn}
-        style={{ display: "grid", gap: "1rem" }}
+    <Box
+      sx={{ width: "100vw", minHeight: "100vh", backgroundColor: "#FFFFFF" }}
+    >
+      {/* Header */}
+      <Box
+        sx={{
+          backgroundColor: "#0F3EA3",
+          py: 6,
+          textAlign: "center",
+        }}
       >
-        <TextField
-          label="Email Address"
-          type="email"
-          value={email}
-          autoComplete="email"
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <TextField
-          label="Password"
-          type="password"
-          value={password}
-          autoComplete="current-password"
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Button type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Sign In"}
-          </Button>
-          <Button
-            variant="text"
-            onClick={handleForgotPassword}
-            disabled={loading}
-          >
-            Forgot password?
-          </Button>
-        </div>
-      </form>
+        <Typography
+          variant="h4"
+          sx={{ color: "#FFFFFF", fontWeight: 700, mb: 1 }}
+        >
+          Welcome Back
+        </Typography>
+        <Typography variant="subtitle1" sx={{ color: "rgba(255,255,255,0.9)" }}>
+          Sign in to manage your offers and profile.
+        </Typography>
+      </Box>
 
-      <Divider />
-      <Typography align="center">OR</Typography>
+      {/* Auth Card */}
+      <Box sx={{ display: "flex", justifyContent: "center", py: 6, px: 2 }}>
+        <Paper
+          elevation={4}
+          sx={{
+            p: 4,
+            borderRadius: "16px",
+            width: "100%",
+            maxWidth: 420,
+            backgroundColor: "#F9FAFF",
+          }}
+        >
+          <Stack spacing={2}>
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 600, textAlign: "center" }}
+            >
+              Sign in to your account
+            </Typography>
 
-      <Button onClick={handleGoogleSignIn} disabled={loading}>
-        {loading ? "Opening Google…" : "Continue with Google"}
-      </Button>
-    </div>
+            <Typography variant="body2" align="center">
+              New here?{" "}
+              <Button
+                onClick={() => router.replace("/authentication/create-account")}
+                size="small"
+                sx={{ color: "#2054CC", textTransform: "none" }}
+              >
+                Create an account
+              </Button>
+            </Typography>
+
+            <form onSubmit={handleEmailSignIn}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Email address"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  fullWidth
+                />
+                <TextField
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  fullWidth
+                />
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={loading}
+                    sx={{
+                      backgroundColor: "#2054CC",
+                      color: "#FFFFFF",
+                      fontWeight: 600,
+                      textTransform: "none",
+                      py: 1.3,
+                      "&:hover": { backgroundColor: "#6C8DFF" },
+                    }}
+                  >
+                    {loading ? (
+                      <CircularProgress size={22} color="inherit" />
+                    ) : (
+                      "Sign In"
+                    )}
+                  </Button>
+                  <Button
+                    variant="text"
+                    onClick={handleForgotPassword}
+                    sx={{
+                      color: "#2054CC",
+                      textTransform: "none",
+                      "&:hover": { textDecoration: "underline" },
+                    }}
+                  >
+                    Forgot password?
+                  </Button>
+                </Stack>
+              </Stack>
+            </form>
+
+            <Divider sx={{ my: 2 }} />
+            <Typography
+              align="center"
+              sx={{ fontSize: "0.9rem", opacity: 0.8 }}
+            >
+              OR
+            </Typography>
+
+            <Button
+              onClick={handleGoogleSignIn}
+              variant="outlined"
+              disabled={loading}
+              sx={{
+                borderColor: "#2054CC",
+                color: "#2054CC",
+                fontWeight: 600,
+                textTransform: "none",
+                py: 1.3,
+                "&:hover": {
+                  backgroundColor: "rgba(32,84,204,0.08)",
+                  borderColor: "#2054CC",
+                },
+              }}
+            >
+              {loading ? (
+                <CircularProgress size={22} color="inherit" />
+              ) : (
+                "Continue with Google"
+              )}
+            </Button>
+          </Stack>
+        </Paper>
+      </Box>
+    </Box>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -9,6 +9,7 @@ import {
   Paper,
   Stack,
   Avatar,
+  CircularProgress,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import MenuBar from "@/components/MenuBar";
@@ -19,11 +20,15 @@ import {
   updateDoc,
   doc,
 } from "firebase/firestore";
-import { db } from "@/firebase";
+import { db, auth } from "@/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
 
 export default function CreateAnOffer() {
   const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
+  // --- form fields ---
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -37,7 +42,22 @@ export default function CreateAnOffer() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
 
-  // --- FILE HANDLING + COMPRESSION (unchanged from your logic) ---
+  // --- Check login state ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!currentUser) {
+        router.replace("/authentication/sign-in");
+      } else {
+        setUser(currentUser);
+        setEmail(currentUser.email || "");
+        setName(currentUser.displayName || "");
+      }
+      setLoadingAuth(false);
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  // --- FILE HANDLING + COMPRESSION ---
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -100,10 +120,12 @@ export default function CreateAnOffer() {
   // --- FIREBASE UPLOAD ---
   async function handleDataUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!user) return;
 
     try {
       const offer = {
-        name,
+        uid: user.uid, // link offer to logged-in user
+        name: name || user.displayName || "",
         title,
         description,
         city,
@@ -111,7 +133,7 @@ export default function CreateAnOffer() {
         area: Number(area),
         price: Number(price),
         currency,
-        email,
+        email: email || user.email || "",
         phone: phone || null,
         imageURL: null,
         createdAt: serverTimestamp(),
@@ -145,10 +167,27 @@ export default function CreateAnOffer() {
       router.replace("/my-dashboard");
     } catch (err) {
       console.error("Offer submit failed:", err);
+      alert("Something went wrong while creating the offer.");
     }
   }
 
   // --- UI ---
+  if (loadingAuth) {
+    return (
+      <Box
+        sx={{
+          width: "100vw",
+          height: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{ width: "100vw", minHeight: "100vh", backgroundColor: "#FFFFFF" }}
@@ -176,14 +215,7 @@ export default function CreateAnOffer() {
       </Box>
 
       {/* Form Section */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          py: 6,
-          px: 2,
-        }}
-      >
+      <Box sx={{ display: "flex", justifyContent: "center", py: 6, px: 2 }}>
         <Paper
           elevation={4}
           sx={{
