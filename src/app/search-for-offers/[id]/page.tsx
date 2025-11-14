@@ -49,7 +49,6 @@ export default function OfferByIdPage() {
       try {
         const offerData = await retrieveOfferById(params.id);
         setOffer(offerData);
-        console.log(offerData);
         if (offerData?.uid) {
           const userDoc = await getDoc(doc(db, "users", offerData.uid));
           if (userDoc.exists()) {

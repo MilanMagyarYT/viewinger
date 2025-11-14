@@ -15,6 +15,7 @@ export async function retrieveOfferById(id: string): Promise<OffersId | null> {
     title: d.title ?? "",
     description: d.description ?? "",
     city: d.city ?? "",
+    country: d.country,
     area: typeof d.area === "number" ? d.area : Number(d.area ?? 0),
     price: typeof d.price === "number" ? d.price : Number(d.price ?? 0),
     currency: d.currency ?? "",
@@ -22,5 +23,6 @@ export async function retrieveOfferById(id: string): Promise<OffersId | null> {
     phone: d.phone ?? null,
     imageURL: d.imageURL ?? "",
     createdAt: d.createdAt ?? null,
+    uid: d.uid
   };
 }
