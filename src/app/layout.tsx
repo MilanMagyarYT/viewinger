@@ -1,3 +1,5 @@
+import "leaflet/dist/leaflet.css";
+
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "./providers/AuthProvider";
 
