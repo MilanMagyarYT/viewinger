@@ -1,7 +1,9 @@
+// src/components/EuropeCountryAutocompleteProps.tsx
 "use client";
 
 import * as React from "react";
 import { Autocomplete, TextField } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 
 export type Country = {
   code: string;
@@ -14,6 +16,10 @@ export interface EuropeCountryAutocompleteProps {
   label?: string;
   helperText?: string;
   required?: boolean;
+
+  // NEW: styling + placeholder so the parent (SearchHeader) can control look
+  sx?: SxProps<Theme>;
+  placeholder?: string;
 }
 
 // Basic list of European countries (you can extend/adjust as needed)
@@ -72,6 +78,8 @@ export function EuropeCountryAutocomplete({
   label = "Country",
   helperText = "Start typing to search for a country in Europe.",
   required = true,
+  sx,
+  placeholder,
 }: EuropeCountryAutocompleteProps) {
   const [inputValue, setInputValue] = React.useState("");
 
@@ -85,6 +93,7 @@ export function EuropeCountryAutocomplete({
 
   return (
     <Autocomplete<Country, false, false, false>
+      sx={sx} // <-- allow parent styling
       options={filteredOptions}
       value={value}
       onChange={(_event, newValue) => {
@@ -104,7 +113,9 @@ export function EuropeCountryAutocomplete({
       renderInput={(params) => (
         <TextField
           {...params}
+          // label can be empty for the search pill (then we only show placeholder)
           label={label}
+          placeholder={placeholder}
           required={required}
           helperText={helperText}
         />

@@ -1,7 +1,9 @@
+// src/components/CityAutocomplete.tsx
 "use client";
 
 import * as React from "react";
 import { Autocomplete, TextField } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 
 type PhotonFeature = {
   geometry: {
@@ -40,6 +42,10 @@ export interface CityAutocompleteProps {
   label?: string;
   helperText?: string;
   required?: boolean;
+
+  // NEW: styling + placeholder to match the search pill
+  sx?: SxProps<Theme>;
+  placeholder?: string;
 }
 
 const PHOTON_ENDPOINT = "https://photon.komoot.io/api/";
@@ -51,6 +57,8 @@ export function CityAutocomplete({
   label = "City",
   helperText = "Start typing the city name (minimum 3 letters).",
   required = true,
+  sx,
+  placeholder,
 }: CityAutocompleteProps) {
   const [inputValue, setInputValue] = React.useState("");
   const [options, setOptions] = React.useState<CityOption[]>([]);
@@ -116,7 +124,6 @@ export function CityAutocomplete({
 
             // Keep only place-like things (city / town / village / hamlet / suburb)
             const isPlace = p.osm_key === "place" || !!p.city || !!p.name;
-
             if (!isPlace) return false;
 
             const value = p.osm_value;
@@ -130,7 +137,6 @@ export function CityAutocomplete({
             ];
 
             if (value && !allowedPlaceTypes.includes(value)) {
-              // If we have a known place type and it's not in our list, skip
               return false;
             }
 
@@ -140,12 +146,11 @@ export function CityAutocomplete({
             const p = feature.properties || {};
             const [lng, lat] = feature.geometry.coordinates;
 
-            const nameFromProps = p.city || p.name || p.state; // fallback if needed
-
+            const nameFromProps = p.city || p.name || p.state;
             const name =
               nameFromProps ?? `(${lat.toFixed(3)}, ${lng.toFixed(3)})`;
-            const displayNameParts = [name, p.state, p.country].filter(Boolean);
 
+            const displayNameParts = [name, p.state, p.country].filter(Boolean);
             const displayName = displayNameParts.join(", ");
 
             return {
@@ -158,7 +163,7 @@ export function CityAutocomplete({
             } as CityOption;
           });
 
-        // Deduplicate by name + country to avoid "Amsterdam" twice
+        // Deduplicate by name + country
         const seen = new Set<string>();
         const deduped: CityOption[] = [];
         for (const c of cityResults) {
@@ -188,6 +193,7 @@ export function CityAutocomplete({
 
   return (
     <Autocomplete<CityOption, false, false, false>
+      sx={sx} // <-- allow parent styling
       options={options}
       value={value}
       loading={loading}
@@ -212,6 +218,7 @@ export function CityAutocomplete({
         <TextField
           {...params}
           label={label}
+          placeholder={placeholder}
           required={required}
           helperText={disabled ? "Select a country first." : helperText}
         />

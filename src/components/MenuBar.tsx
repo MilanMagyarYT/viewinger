@@ -13,6 +13,7 @@ import {
   Divider,
   Avatar,
   Container,
+  GlobalStyles,
 } from "@mui/material";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import { useRouter } from "next/navigation";
@@ -22,7 +23,6 @@ import { doc, getDoc } from "firebase/firestore";
 
 const COLOR_NAVY_DARK = "#2D3250";
 const COLOR_NAVY = "#424769";
-const COLOR_PEACH = "#F8BB84";
 const COLOR_WHITE = "#FFFFFF";
 
 export default function MenuBar() {
@@ -67,11 +67,11 @@ export default function MenuBar() {
   const handleLogout = async () => {
     await signOut(auth);
     handleClose();
-    router.replace("/");
+    router.replace("/search-for-offers");
   };
 
   const handleSearchOffers = () => {
-    router.push("/");
+    router.replace("/search-for-offers");
   };
 
   const handleCreateOffer = () => {
@@ -94,267 +94,300 @@ export default function MenuBar() {
 
   // --- UI ---
   return (
-    <AppBar
-      position="fixed"
-      sx={{
-        backgroundColor: COLOR_NAVY_DARK,
-        boxShadow: "none",
-        zIndex: (theme) => theme.zIndex.drawer + 1,
-      }}
-    >
-      <Toolbar
-        disableGutters
+    <>
+      {/* Global reset for layout */}
+      <GlobalStyles
+        styles={{
+          "html, body": {
+            margin: 0,
+            padding: 0,
+            boxSizing: "border-box",
+          },
+        }}
+      />
+
+      <AppBar
+        position="fixed"
         sx={{
-          py: 1,
+          backgroundColor: COLOR_NAVY_DARK,
+          boxShadow: "none",
+          zIndex: (theme) => theme.zIndex.drawer + 1,
         }}
       >
-        <Container
-          maxWidth="lg"
+        <Toolbar
+          disableGutters
           sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            py: 1,
           }}
         >
-          {/* Left: big pill with logo + nav links */}
-          <Box
+          <Container
+            maxWidth="lg"
             sx={{
               display: "flex",
               alignItems: "center",
-              flex: 1,
-              backgroundColor: COLOR_NAVY,
-              borderRadius: "16px",
-              px: 2.5,
-              py: 1,
-              gap: 4,
+              justifyContent: "space-between",
             }}
           >
-            {/* Logo (clickable to home) */}
+            {/* Left: big pill with logo + nav links */}
             <Box
               sx={{
                 display: "flex",
                 alignItems: "center",
-                cursor: "pointer",
+                flex: 1,
+                backgroundColor: COLOR_NAVY,
+                borderRadius: "16px",
+                px: 2.5,
+                py: 1,
+                gap: 4,
               }}
-              onClick={() => router.push("/")}
             >
+              {/* Logo (clickable to home) */}
               <Box
-                component="img"
-                src="/logo-wordmark.png"
-                alt="Viewinger"
                 sx={{
-                  height: 28,
-                  width: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  cursor: "pointer",
                 }}
-              />
-            </Box>
-
-            {/* Nav links */}
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 3,
-                ml: 2,
-              }}
-            >
-              <Button
-                onClick={handleSearchOffers}
-                sx={{
-                  color: COLOR_WHITE,
-                  textTransform: "none",
-                  fontWeight: 500,
-                  fontSize: 14,
-                  "&:hover": {
-                    backgroundColor: "rgba(255,255,255,0.04)",
-                  },
-                }}
+                onClick={() => router.push("/search-for-offers")}
               >
-                Search Offers
-              </Button>
-
-              <Button
-                onClick={handleCreateOffer}
-                sx={{
-                  color: COLOR_WHITE,
-                  textTransform: "none",
-                  fontWeight: 500,
-                  fontSize: 14,
-                  "&:hover": {
-                    backgroundColor: "rgba(255,255,255,0.04)",
-                  },
-                }}
-              >
-                Create Offer
-              </Button>
-
-              <Button
-                onClick={handleMyDashboard}
-                sx={{
-                  color: COLOR_WHITE,
-                  textTransform: "none",
-                  fontWeight: 500,
-                  fontSize: 14,
-                  "&:hover": {
-                    backgroundColor: "rgba(255,255,255,0.04)",
-                  },
-                }}
-              >
-                My Dashboard
-              </Button>
-            </Box>
-          </Box>
-
-          {/* Right: small pill with avatar (if logged in) + hamburger */}
-          <Box
-            sx={{
-              ml: 2,
-              display: "flex",
-              alignItems: "center",
-              backgroundColor: COLOR_NAVY,
-              borderRadius: "16px",
-              px: 2,
-              py: 1,
-              gap: 1.5,
-            }}
-          >
-            {user && (
-              <Avatar
-                src={profileImage || undefined}
-                alt={user.displayName || "User"}
-                sx={{
-                  width: 32,
-                  height: 32,
-                  bgcolor: "#DDDDDD",
-                  flexShrink: 0,
-                }}
-              >
-                {(!profileImage &&
-                  (user.displayName?.charAt(0) ||
-                    user.email?.charAt(0) ||
-                    "U")) ||
-                  null}
-              </Avatar>
-            )}
-
-            <IconButton
-              onClick={handleMenuClick}
-              sx={{
-                color: COLOR_WHITE,
-                p: 0.75,
-                "&:hover": {
-                  backgroundColor: "rgba(255,255,255,0.08)",
-                },
-              }}
-            >
-              <MenuRoundedIcon />
-            </IconButton>
-          </Box>
-        </Container>
-
-        {/* Menu opened by hamburger */}
-        <Menu
-          anchorEl={anchorEl}
-          open={open}
-          onClose={handleClose}
-          slotProps={{
-            paper: {
-              elevation: 4,
-              sx: {
-                mt: 1.5,
-                borderRadius: "12px",
-                minWidth: 200,
-                backgroundColor: "#F9FAFF",
-              },
-            },
-          }}
-          transformOrigin={{ horizontal: "right", vertical: "top" }}
-          anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
-        >
-          {user ? (
-            <>
-              <Box sx={{ px: 2, py: 1.5 }}>
-                <Typography
-                  variant="body2"
-                  sx={{ color: COLOR_NAVY_DARK, fontWeight: 600 }}
-                >
-                  {user.displayName || "My account"}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ color: "gray", display: "block" }}
-                >
-                  {user.email}
-                </Typography>
+                <Box
+                  component="img"
+                  src="/logo-wordmark.png"
+                  alt="Viewinger"
+                  sx={{
+                    height: 28,
+                    width: "auto",
+                  }}
+                />
               </Box>
 
-              <Divider />
+              {/* Nav links */}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  ml: 2,
+                }}
+              >
+                <Button
+                  onClick={handleSearchOffers}
+                  sx={{
+                    color: COLOR_WHITE,
+                    textTransform: "none",
+                    fontWeight: 500,
+                    fontSize: 14,
+                    "&:hover": {
+                      backgroundColor: "rgba(255,255,255,0.04)",
+                    },
+                  }}
+                >
+                  Search Offers
+                </Button>
 
-              <MenuItem
-                onClick={handleMyDashboard}
-                sx={{
-                  color: COLOR_NAVY_DARK,
-                  "&:hover": { backgroundColor: "rgba(114,122,168,0.15)" },
-                }}
-              >
-                My Dashboard
-              </MenuItem>
-              <MenuItem
-                onClick={handleCreateOffer}
-                sx={{
-                  color: COLOR_NAVY_DARK,
-                  "&:hover": { backgroundColor: "rgba(114,122,168,0.15)" },
-                }}
-              >
-                Create Offer
-              </MenuItem>
+                <Button
+                  onClick={handleCreateOffer}
+                  sx={{
+                    color: COLOR_WHITE,
+                    textTransform: "none",
+                    fontWeight: 500,
+                    fontSize: 14,
+                    "&:hover": {
+                      backgroundColor: "rgba(255,255,255,0.04)",
+                    },
+                  }}
+                >
+                  Create Offer
+                </Button>
 
-              <Divider />
+                <Button
+                  onClick={handleMyDashboard}
+                  sx={{
+                    color: COLOR_WHITE,
+                    textTransform: "none",
+                    fontWeight: 500,
+                    fontSize: 14,
+                    "&:hover": {
+                      backgroundColor: "rgba(255,255,255,0.04)",
+                    },
+                  }}
+                >
+                  My Dashboard
+                </Button>
+              </Box>
+            </Box>
 
-              <MenuItem
-                onClick={handleLogout}
+            {/* Right: small pill with avatar (if logged in) + hamburger */}
+            <Box
+              sx={{
+                ml: 2,
+                display: "flex",
+                alignItems: "center",
+                backgroundColor: COLOR_NAVY,
+                borderRadius: "16px",
+                px: 2,
+                py: 1,
+                gap: 1.5,
+              }}
+            >
+              {user && (
+                <Avatar
+                  src={profileImage || undefined}
+                  alt={user.displayName || "User"}
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    bgcolor: "#DDDDDD",
+                    flexShrink: 0,
+                  }}
+                >
+                  {(!profileImage &&
+                    (user.displayName?.charAt(0) ||
+                      user.email?.charAt(0) ||
+                      "U")) ||
+                    null}
+                </Avatar>
+              )}
+
+              <IconButton
+                onClick={handleMenuClick}
                 sx={{
-                  color: "#B00020",
-                  "&:hover": { backgroundColor: "rgba(255,76,76,0.08)" },
+                  color: COLOR_WHITE,
+                  p: 0.75,
+                  "&:hover": {
+                    backgroundColor: "rgba(255,255,255,0.08)",
+                  },
                 }}
               >
-                Logout
-              </MenuItem>
-            </>
-          ) : (
-            <>
-              <MenuItem
-                onClick={handleSearchOffers}
-                sx={{
-                  color: COLOR_NAVY_DARK,
-                  "&:hover": { backgroundColor: "rgba(114,122,168,0.15)" },
-                }}
-              >
-                Search Offers
-              </MenuItem>
-              <MenuItem
-                onClick={handleCreateOffer}
-                sx={{
-                  color: COLOR_NAVY_DARK,
-                  "&:hover": { backgroundColor: "rgba(114,122,168,0.15)" },
-                }}
-              >
-                Create Offer
-              </MenuItem>
-              <Divider />
-              <MenuItem
-                onClick={handleSignIn}
-                sx={{
-                  color: COLOR_NAVY_DARK,
-                  "&:hover": { backgroundColor: "rgba(114,122,168,0.15)" },
-                }}
-              >
-                Sign In
-              </MenuItem>
-            </>
-          )}
-        </Menu>
-      </Toolbar>
-    </AppBar>
+                <MenuRoundedIcon />
+              </IconButton>
+            </Box>
+          </Container>
+
+          {/* Menu opened by hamburger */}
+          <Menu
+            anchorEl={anchorEl}
+            open={open}
+            onClose={handleClose}
+            slotProps={{
+              paper: {
+                elevation: 4,
+                sx: {
+                  mt: 1.5,
+                  borderRadius: "16px",
+                  minWidth: 200,
+                  backgroundColor: "#F9FAFF",
+                },
+              },
+            }}
+            transformOrigin={{ horizontal: "right", vertical: "top" }}
+            anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+          >
+            {user
+              ? [
+                  <Box key="user-header" sx={{ px: 2, py: 1.5 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: COLOR_NAVY_DARK, fontWeight: 600 }}
+                    >
+                      {user.displayName || "My account"}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: "gray", display: "block" }}
+                    >
+                      {user.email}
+                    </Typography>
+                  </Box>,
+
+                  <Divider key="divider-1" />,
+
+                  <MenuItem
+                    key="menu-dashboard"
+                    onClick={handleMyDashboard}
+                    sx={{
+                      color: COLOR_NAVY_DARK,
+                      "&:hover": {
+                        backgroundColor: "rgba(114,122,168,0.15)",
+                      },
+                    }}
+                  >
+                    My Dashboard
+                  </MenuItem>,
+
+                  <MenuItem
+                    key="menu-create-offer"
+                    onClick={handleCreateOffer}
+                    sx={{
+                      color: COLOR_NAVY_DARK,
+                      "&:hover": {
+                        backgroundColor: "rgba(114,122,168,0.15)",
+                      },
+                    }}
+                  >
+                    Create Offer
+                  </MenuItem>,
+
+                  <Divider key="divider-2" />,
+
+                  <MenuItem
+                    key="menu-logout"
+                    onClick={handleLogout}
+                    sx={{
+                      color: "#B00020",
+                      "&:hover": {
+                        backgroundColor: "rgba(255,76,76,0.08)",
+                      },
+                    }}
+                  >
+                    Logout
+                  </MenuItem>,
+                ]
+              : [
+                  <MenuItem
+                    key="menu-search-offers"
+                    onClick={handleSearchOffers}
+                    sx={{
+                      color: COLOR_NAVY_DARK,
+                      "&:hover": {
+                        backgroundColor: "rgba(114,122,168,0.15)",
+                      },
+                    }}
+                  >
+                    Search Offers
+                  </MenuItem>,
+
+                  <MenuItem
+                    key="menu-create-offer-guest"
+                    onClick={handleCreateOffer}
+                    sx={{
+                      color: COLOR_NAVY_DARK,
+                      "&:hover": {
+                        backgroundColor: "rgba(114,122,168,0.15)",
+                      },
+                    }}
+                  >
+                    Create Offer
+                  </MenuItem>,
+
+                  <Divider key="divider-guest" />,
+
+                  <MenuItem
+                    key="menu-sign-in"
+                    onClick={handleSignIn}
+                    sx={{
+                      color: COLOR_NAVY_DARK,
+                      "&:hover": {
+                        backgroundColor: "rgba(114,122,168,0.15)",
+                      },
+                    }}
+                  >
+                    Sign In
+                  </MenuItem>,
+                ]}
+          </Menu>
+        </Toolbar>
+      </AppBar>
+    </>
   );
 }
