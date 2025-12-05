@@ -10,11 +10,7 @@ import {
   Typography,
   CircularProgress,
 } from "@mui/material";
-import {
-  ArrowDropDownRounded,
-  ViewModuleRounded,
-  ViewListRounded,
-} from "@mui/icons-material";
+import { ArrowDropDownRounded, ViewModuleRounded } from "@mui/icons-material";
 import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
 import { GeocodedAddress, OfferHit, ListerMeta } from "@/types/SearchPage";
 import OfferResultCard from "@/components/OfferResultCard";

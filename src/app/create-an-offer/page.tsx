@@ -1,404 +1,405 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
-  Typography,
-  TextField,
-  Button,
-  Paper,
-  Stack,
-  Avatar,
   CircularProgress,
-  Slider,
+  Container,
+  Paper,
+  Typography,
+  Button,
+  Stack,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import MenuBar from "@/components/MenuBar";
+import { auth, db } from "@/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
 import {
   addDoc,
   collection,
+  doc,
   serverTimestamp,
   updateDoc,
-  doc,
 } from "firebase/firestore";
-import { db, auth } from "@/firebase";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
+import OfferOverviewStep, { OverviewState } from "./OfferOverviewStep";
+import OfferPricingStep, { PricingTier } from "./OfferPricingStep";
+import OfferRequirementsStep, {
+  RequirementsState,
+} from "./OfferRequirementsStep";
+import OfferPortfolioStep, { PortfolioState } from "./OfferPortfolioStep";
+import OfferWizardStepper, { OFFER_STEPS } from "./OfferWizardStepper";
+import OfferPublishStep from "./OfferPublishStep";
 
-// geo UI components (paths as you used them)
-import {
-  EuropeCountryAutocomplete,
-  Country as CountryType,
-} from "@/components/EuropeCountryAutocompleteProps";
-import { CityAutocomplete, CityOption } from "@/components/CityAutocomplete";
-
-export default function CreateAnOffer() {
+export default function CreateOfferPage() {
   const router = useRouter();
+
   const [user, setUser] = useState<User | null>(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // --- basic form fields ---
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [currency, setCurrency] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState("");
+  const [activeStep, setActiveStep] = useState(0);
 
-  // --- geo selection state ---
-  const [country, setCountry] = useState<CountryType | null>({
-    code: "NL",
-    name: "Netherlands",
+  // ----- Wizard state -----
+
+  const [overview, setOverview] = useState<OverviewState>({
+    title: "",
+    description: "",
+    country: { code: "NL", name: "Netherlands" },
+    city: null,
+    coverageCenterLat: null,
+    coverageCenterLng: null,
+    coverageRadiusKm: 5,
+    displayName: "",
   });
-  const [cityOption, setCityOption] = useState<CityOption | null>(null);
-  const [radiusKm, setRadiusKm] = useState<number>(5); // slider value, 0–25 km
 
-  // pin center (coverage center)
-  const [pinLatLng, setPinLatLng] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
+  const [pricing, setPricing] = useState<PricingTier[]>([
+    {
+      id: "basic",
+      label: "Basic",
+      enabled: true,
+      price: "",
+      description: "",
+    },
+    {
+      id: "standard",
+      label: "Standard",
+      enabled: false,
+      price: "",
+      description: "",
+    },
+    {
+      id: "premium",
+      label: "Premium",
+      enabled: false,
+      price: "",
+      description: "",
+    },
+  ]);
 
-  // Leaflet map refs
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<any>(null);
-  const leafletRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
-  const circleRef = useRef<any>(null);
-  const markerIconRef = useRef<any>(null); // custom marker icon
+  const [requirements, setRequirements] = useState<RequirementsState>({
+    requirementsText: "",
+    phone: "",
+  });
 
-  // --- Check login state ---
+  const [portfolio, setPortfolio] = useState<PortfolioState>({
+    coverImageFile: null,
+    coverImagePreviewUrl: "",
+    videoFile: null,
+    videoName: "",
+    pdfFile: null,
+    pdfName: "",
+  });
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // ----- Auth gate -----
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!currentUser) {
+    const unsub = onAuthStateChanged(auth, (current) => {
+      console.log("[CreateOffer] onAuthStateChanged", !!current);
+      if (!current) {
         router.replace("/authentication/sign-in");
       } else {
-        setUser(currentUser);
-        setEmail(currentUser.email || "");
-        setName(currentUser.displayName || "");
+        setUser(current);
+        setOverview((prev) => ({
+          ...prev,
+          displayName: prev.displayName || current.displayName || "",
+        }));
       }
-      setLoadingAuth(false);
+      setAuthLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => unsub();
   }, [router]);
 
-  // --- INIT LEAFLET MAP (dynamic import, browser only) ---
-  useEffect(() => {
-    console.log("[MAP EFFECT] run", {
-      loadingAuth,
-      container: !!mapContainerRef.current,
-      hasMap: !!mapRef.current,
-    });
+  // ----- Step navigation helpers -----
 
-    if (loadingAuth) {
-      console.log("[MAP EFFECT] waiting for auth to finish");
-      return;
-    }
-
-    if (!mapContainerRef.current) {
-      console.log("[MAP EFFECT] no container yet after auth, will run again");
-      return;
-    }
-
-    if (mapRef.current) {
-      console.log("[MAP EFFECT] map already initialized, skipping");
-      return;
-    }
-
-    let isMounted = true;
-
-    (async () => {
-      try {
-        console.log("[MAP EFFECT] importing leaflet...");
-        const mod = await import("leaflet");
-        const L = (mod as any).default || mod;
-        leafletRef.current = L;
-
-        // create custom marker icon (blue dot)
-        markerIconRef.current = L.divIcon({
-          html:
-            '<div style="width:18px;height:18px;border-radius:50%;' +
-            "background:#2054CC;border:2px solid white;" +
-            'box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>',
-          className: "",
-          iconSize: [18, 18],
-          iconAnchor: [9, 9],
-        });
-
-        if (!isMounted) {
-          console.log("[MAP EFFECT] not mounted anymore, abort");
-          return;
-        }
-        if (!mapContainerRef.current) {
-          console.log("[MAP EFFECT] container missing after import, abort");
-          return;
-        }
-
-        const initialCenter: [number, number] = [52.37, 4.9]; // default Amsterdam-ish
-        console.log("[MAP EFFECT] creating map at center", initialCenter);
-
-        const map = L.map(mapContainerRef.current).setView(initialCenter, 6);
-        mapRef.current = map;
-
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19,
-          attribution: "© OpenStreetMap contributors",
-        }).addTo(map);
-
-        console.log("[MAP EFFECT] tile layer added");
-
-        // clicking on map drops/moves pin
-        map.on("click", (e: any) => {
-          const { lat, lng } = e.latlng;
-          console.log("[MAP CLICK] clicked at", lat, lng);
-          setPinLatLng({ lat, lng });
-        });
-      } catch (err) {
-        console.error("[MAP EFFECT] ERROR while setting up leaflet map", err);
-      }
-    })();
-
-    return () => {
-      console.log("[MAP EFFECT] cleanup");
-      isMounted = false;
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-      markerRef.current = null;
-      circleRef.current = null;
-      markerIconRef.current = null;
-    };
-  }, [loadingAuth]); // rerun when auth finishes
-
-  // --- UPDATE MAP CENTER WHEN CITY CHANGES ---
-  useEffect(() => {
-    const L = leafletRef.current;
-    const map = mapRef.current;
-    console.log("[CITY EFFECT] triggered", {
-      hasCity: !!cityOption,
-      hasMap: !!map,
-      hasLeaflet: !!L,
-      cityOption,
-    });
-
-    if (!cityOption || !map || !L) return;
-
-    const center: [number, number] = [cityOption.lat, cityOption.lng];
-    console.log("[CITY EFFECT] setting map view to", center);
-    map.setView(center, 11);
-
-    // if no pin yet, drop it at city center
-    setPinLatLng(
-      (prev) =>
-        prev ?? {
-          lat: cityOption.lat,
-          lng: cityOption.lng,
-        }
-    );
-  }, [cityOption]);
-
-  // --- UPDATE MARKER AND RADIUS CIRCLE WHEN PIN / RADIUS CHANGES ---
-  useEffect(() => {
-    const L = leafletRef.current;
-    const map = mapRef.current;
-    console.log("[PIN/RADIUS EFFECT] triggered", {
-      hasLeaflet: !!L,
-      hasMap: !!map,
-      hasPin: !!pinLatLng,
-      pinLatLng,
-      radiusKm,
-    });
-
-    if (!L || !map || !pinLatLng) return;
-
-    const latLng: [number, number] = [pinLatLng.lat, pinLatLng.lng];
-
-    // marker
-    if (!markerRef.current) {
-      console.log("[PIN/RADIUS EFFECT] creating marker at", latLng);
-      markerRef.current = L.marker(latLng, {
-        icon: markerIconRef.current || undefined,
-      }).addTo(map);
-    } else {
-      console.log("[PIN/RADIUS EFFECT] moving marker to", latLng);
-      markerRef.current.setLatLng(latLng);
-    }
-
-    // circle
-    const radiusMeters = radiusKm * 1000;
-    if (!circleRef.current) {
-      console.log(
-        "[PIN/RADIUS EFFECT] creating circle at",
-        latLng,
-        "radius m",
-        radiusMeters
+  const canGoNext = () => {
+    if (activeStep === 0) {
+      // basic validation for overview
+      return (
+        overview.title.trim().length > 0 &&
+        overview.description.trim().length > 0 &&
+        !!overview.country &&
+        !!overview.city &&
+        overview.coverageCenterLat !== null &&
+        overview.coverageCenterLng !== null
       );
-      circleRef.current = L.circle(latLng, {
-        radius: radiusMeters,
-        color: "#2054CC",
-        fillColor: "#6C8DFF",
-        fillOpacity: 0.3,
-      }).addTo(map);
-    } else {
-      console.log(
-        "[PIN/RADIUS EFFECT] updating circle to",
-        latLng,
-        "radius m",
-        radiusMeters
-      );
-      circleRef.current.setLatLng(latLng);
-      circleRef.current.setRadius(radiusMeters);
     }
-  }, [pinLatLng, radiusKm]);
-
-  // --- FILE HANDLING + COMPRESSION ---
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-
-    const MAX = 10 * 1024 * 1024;
-    let toUse: File = f;
-
-    if (f.size > MAX) {
-      toUse = await compressImage(f, { maxWidth: 1600, quality: 0.8 });
-      if (toUse.size > MAX) {
-        alert(
-          "Image is still too large after compression. Try a smaller image."
-        );
-        return;
-      }
+    if (activeStep === 1) {
+      const basic = pricing.find((p) => p.id === "basic");
+      return !!basic && basic.enabled && basic.price.trim().length > 0;
     }
-
-    setFile(toUse);
-    setPreview(URL.createObjectURL(toUse));
+    if (activeStep === 3) {
+      // cover image is required
+      return !!portfolio.coverImageFile || !!portfolio.coverImagePreviewUrl;
+    }
+    return true;
   };
 
-  async function compressImage(
+  const handleNext = () => {
+    if (activeStep < OFFER_STEPS.length - 1) {
+      setActiveStep((s) => s + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (activeStep > 0 && !submitting) {
+      setActiveStep((s) => s - 1);
+    }
+  };
+
+  // ----- Cloudinary helpers (hardened) -----
+
+  async function uploadToCloudinary(
     file: File,
-    { maxWidth = 1600, quality = 0.8 } = {}
-  ): Promise<File> {
-    const img = document.createElement("img");
-    img.src = URL.createObjectURL(file);
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = rej;
-    });
+    folder: string,
+    resourceType: "image" | "video" | "raw" = "image"
+  ): Promise<{ url: string; publicId: string }> {
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const unsignedPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UNSIGNED_PRESET;
 
-    const scale = Math.min(1, maxWidth / img.width);
-    const w = Math.round(img.width * scale);
-    const h = Math.round(img.height * scale);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(img, 0, 0, w, h);
-
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (b) => {
-          if (b) resolve(b);
-          else reject(new Error("Compression failed (got null blob)"));
-        },
-        "image/jpeg",
-        quality
+    if (!cloudName || !unsignedPreset) {
+      console.error("[Cloudinary] Missing env variables", {
+        cloudName,
+        unsignedPreset,
+      });
+      throw new Error(
+        "File upload failed: Cloudinary configuration is missing."
       );
+    }
+
+    console.log("[Cloudinary] Starting upload", {
+      fileName: file.name,
+      size: file.size,
+      type: file.type,
+      folder,
+      resourceType,
     });
 
-    URL.revokeObjectURL(img.src);
-    return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), {
-      type: "image/jpeg",
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", unsignedPreset);
+    form.append("folder", folder);
+
+    let res: Response;
+    try {
+      res = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
+        {
+          method: "POST",
+          body: form,
+        }
+      );
+    } catch (err) {
+      console.error("[Cloudinary] Network error while uploading", err);
+      throw new Error(
+        "File upload failed: could not reach Cloudinary (network error)."
+      );
+    }
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch (err) {
+      console.error("[Cloudinary] Failed to parse JSON response", err);
+      throw new Error("File upload failed: invalid Cloudinary response.");
+    }
+
+    if (!res.ok) {
+      console.error("[Cloudinary] Upload failed", {
+        status: res.status,
+        statusText: res.statusText,
+        data,
+      });
+      throw new Error("File upload failed: Cloudinary returned an error.");
+    }
+
+    console.log("[Cloudinary] Upload success", {
+      secure_url: data.secure_url,
+      public_id: data.public_id,
     });
+
+    return {
+      url: data.secure_url as string,
+      publicId: data.public_id as string,
+    };
   }
 
-  // --- FIREBASE UPLOAD ---
-  async function handleDataUpload(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  // ----- Publish handler (with logging + safer error handling) -----
+
+  const handlePublish = async () => {
     if (!user) return;
 
-    if (!country || !cityOption) {
-      alert("Please select a country and city for your offer coverage.");
+    if (!canGoNext()) {
+      // keep user on current step if validation fails
+      console.warn("[CreateOffer] Validation failed on step", activeStep);
       return;
     }
 
-    if (!pinLatLng) {
-      alert("Please click on the map to set your coverage center.");
-      return;
-    }
+    setSubmitting(true);
+    setSubmitError(null);
 
-    if (radiusKm < 0 || radiusKm > 25) {
-      alert("Radius must be between 0 and 25 km.");
-      return;
-    }
+    console.log("[CreateOffer] Publishing offer with state", {
+      overview,
+      pricing,
+      requirements,
+      portfolio: {
+        hasCoverImage: !!portfolio.coverImageFile,
+        hasVideo: !!portfolio.videoFile,
+        hasPdf: !!portfolio.pdfFile,
+      },
+      user: {
+        uid: user.uid,
+        email: user.email,
+      },
+    });
 
     try {
-      const offer = {
+      const basicTier = pricing.find((p) => p.id === "basic");
+      if (!basicTier || !basicTier.enabled || !basicTier.price.trim()) {
+        throw new Error(
+          "Please set a valid Basic tier price in the Pricing step."
+        );
+      }
+
+      const basicPriceNumber = Number(basicTier.price);
+      if (Number.isNaN(basicPriceNumber) || basicPriceNumber <= 0) {
+        throw new Error(
+          "Please enter a positive number for the Basic tier price."
+        );
+      }
+
+      if (!overview.country || !overview.city) {
+        throw new Error("Please select a country and city in the Overview.");
+      }
+      if (
+        overview.coverageCenterLat === null ||
+        overview.coverageCenterLng === null
+      ) {
+        throw new Error("Please set your coverage center on the map.");
+      }
+      if (!overview.title.trim() || !overview.description.trim()) {
+        throw new Error("Please fill in a title and description.");
+      }
+      if (!portfolio.coverImageFile && !portfolio.coverImagePreviewUrl) {
+        throw new Error("Please upload a cover image in the Portfolio step.");
+      }
+
+      const offersCol = collection(db, "offers");
+
+      const baseDoc: any = {
         uid: user.uid,
-        name: name || user.displayName || "",
-        title,
-        description,
+        name: overview.displayName || user.displayName || "",
+        title: overview.title.trim(),
+        description: overview.description.trim(),
 
-        // human-readable location
-        countryName: country.name,
-        countryCode: country.code,
-        cityName: cityOption.name,
+        countryName: overview.country?.name ?? null,
+        countryCode: overview.country?.code ?? null,
+        cityName: overview.city?.name ?? null,
+        cityLat: overview.city?.lat ?? null,
+        cityLng: overview.city?.lng ?? null,
 
-        // city center (from city autocomplete)
-        cityLat: cityOption.lat,
-        cityLng: cityOption.lng,
+        coverageCenterLat: overview.coverageCenterLat,
+        coverageCenterLng: overview.coverageCenterLng,
+        coverageRadiusKm: overview.coverageRadiusKm,
 
-        // coverage center (from pin on map)
-        coverageCenterLat: pinLatLng.lat,
-        coverageCenterLng: pinLatLng.lng,
+        // legacy fields for search:
+        price: basicPriceNumber,
+        currency: "EUR",
 
-        // coverage radius (from slider, in km)
-        coverageRadiusKm: radiusKm,
+        email: user.email || "",
+        phone: requirements.phone || null,
 
-        price: Number(price),
-        currency,
-        email: email || user.email || "",
-        phone: phone || null,
-        imageURL: null,
+        pricingTiers: pricing.map((tier) => ({
+          id: tier.id,
+          label: tier.label,
+          enabled: tier.enabled,
+          price: Number(tier.price) || 0,
+          description: tier.description.trim(),
+        })),
+
+        requirements: requirements.requirementsText.trim(),
+
+        portfolio: {
+          coverImageURL: null,
+          coverImagePublicId: null,
+          videoURL: null,
+          videoPublicId: null,
+          pdfURL: null,
+          pdfPublicId: null,
+        },
+
         createdAt: serverTimestamp(),
       };
 
-      const offersCol = collection(db, "offers");
-      const docRef = await addDoc(offersCol, offer);
+      console.log("[CreateOffer] Creating Firestore offer doc", baseDoc);
 
-      if (file) {
-        const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
-        const unsignedPreset =
-          process.env.NEXT_PUBLIC_CLOUDINARY_UNSIGNED_PRESET!;
+      const docRef = await addDoc(offersCol, baseDoc);
 
-        const form = new FormData();
-        form.append("file", file);
-        form.append("upload_preset", unsignedPreset);
-        form.append("folder", `offers/${docRef.id}`);
+      console.log("[CreateOffer] Firestore doc created", { id: docRef.id });
 
-        const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-          { method: "POST", body: form }
+      // Upload portfolio files (optional ones can be skipped)
+      const updates: any = {};
+
+      if (portfolio.coverImageFile) {
+        console.log("[CreateOffer] Uploading cover image...");
+        const img = await uploadToCloudinary(
+          portfolio.coverImageFile,
+          `offers/${docRef.id}`,
+          "image"
         );
-        const data = await res.json();
+        updates.imageURL = img.url; // for search cards (backwards compatibility)
+        updates.cloudinaryPublicId = img.publicId;
+        updates["portfolio.coverImageURL"] = img.url;
+        updates["portfolio.coverImagePublicId"] = img.publicId;
+      }
 
-        await updateDoc(doc(db, "offers", docRef.id), {
-          imageURL: data.secure_url,
-          cloudinaryPublicId: data.public_id,
-        });
+      if (portfolio.videoFile) {
+        console.log("[CreateOffer] Uploading video...");
+        const vid = await uploadToCloudinary(
+          portfolio.videoFile,
+          `offers/${docRef.id}`,
+          "video"
+        );
+        updates["portfolio.videoURL"] = vid.url;
+        updates["portfolio.videoPublicId"] = vid.publicId;
+      }
+
+      if (portfolio.pdfFile) {
+        console.log("[CreateOffer] Uploading PDF...");
+        const pdf = await uploadToCloudinary(
+          portfolio.pdfFile,
+          `offers/${docRef.id}`,
+          "raw"
+        );
+        updates["portfolio.pdfURL"] = pdf.url;
+        updates["portfolio.pdfPublicId"] = pdf.publicId;
+      }
+
+      console.log("[CreateOffer] Media upload results", updates);
+
+      if (Object.keys(updates).length > 0) {
+        await updateDoc(doc(db, "offers", docRef.id), updates);
+        console.log("[CreateOffer] Firestore doc updated with media");
       }
 
       router.replace("/my-dashboard");
-    } catch (err) {
-      console.error("Offer submit failed:", err);
-      alert("Something went wrong while creating the offer.");
+    } catch (err: any) {
+      console.error("[CreateOffer] Offer publish failed:", err);
+      setSubmitError(
+        err?.message ||
+          "Something went wrong while creating your offer. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
     }
-  }
+  };
 
-  // --- UI ---
-  if (loadingAuth) {
+  // ----- Render -----
+
+  if (authLoading) {
     return (
       <Box
         sx={{
@@ -416,218 +417,144 @@ export default function CreateAnOffer() {
 
   return (
     <Box
-      sx={{ width: "100vw", minHeight: "100vh", backgroundColor: "#FFFFFF" }}
+      sx={{ width: "100vw", minHeight: "100vh", backgroundColor: COLORS.white }}
     >
       <MenuBar />
 
-      {/* Header Section */}
+      {/* Header band */}
       <Box
         sx={{
-          backgroundColor: "#0F3EA3",
-          py: 6,
-          textAlign: "center",
-          marginTop: "3rem",
+          backgroundColor: COLORS.navyDark,
+          pt: 8,
+          pb: 4,
+          mt: "3rem",
         }}
       >
-        <Typography
-          variant="h4"
-          sx={{ color: "#FFFFFF", fontWeight: 700, mb: 1 }}
-        >
-          Create an Offer
-        </Typography>
-        <Typography variant="subtitle1" sx={{ color: "rgba(255,255,255,0.9)" }}>
-          Share your availability and help others discover properties worldwide.
-        </Typography>
+        <Container maxWidth="lg">
+          <Typography
+            variant="h4"
+            sx={{ color: COLORS.white, fontWeight: 700, mb: 1 }}
+          >
+            Create an Offer
+          </Typography>
+          <Typography
+            variant="subtitle1"
+            sx={{ color: "rgba(255,255,255,0.85)" }}
+          >
+            Fill in a few details to publish your viewing offer.
+          </Typography>
+        </Container>
       </Box>
 
-      {/* Form Section */}
-      <Box sx={{ display: "flex", justifyContent: "center", py: 6, px: 2 }}>
+      {/* Wizard body */}
+      <Container maxWidth="lg" sx={{ mt: -4, mb: 6 }}>
         <Paper
-          elevation={4}
+          elevation={6}
           sx={{
-            p: 4,
-            borderRadius: "16px",
-            width: "100%",
-            maxWidth: 600,
+            borderRadius: "20px",
+            p: 3,
             backgroundColor: "#F9FAFF",
           }}
         >
-          <form
-            onSubmit={handleDataUpload}
-            style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}
+          {/* Stepper */}
+          <OfferWizardStepper activeStep={activeStep} />
+
+          <Box sx={{ mt: 3 }}>
+            {activeStep === 0 && (
+              <OfferOverviewStep value={overview} onChange={setOverview} />
+            )}
+
+            {activeStep === 1 && (
+              <OfferPricingStep tiers={pricing} onChange={setPricing} />
+            )}
+
+            {activeStep === 2 && (
+              <OfferRequirementsStep
+                value={requirements}
+                onChange={setRequirements}
+              />
+            )}
+
+            {activeStep === 3 && (
+              <OfferPortfolioStep value={portfolio} onChange={setPortfolio} />
+            )}
+
+            {activeStep === 4 && (
+              <OfferPublishStep
+                overview={overview}
+                pricing={pricing}
+                requirements={requirements}
+                portfolio={portfolio}
+              />
+            )}
+          </Box>
+
+          {/* Footer buttons */}
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+            sx={{ mt: 4 }}
           >
-            <TextField
-              label="Name of the person fulfilling the offer"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Title of the offer"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              multiline
-              minRows={3}
-              required
-              fullWidth
-            />
+            <Button
+              variant="text"
+              onClick={handleBack}
+              disabled={activeStep === 0 || submitting}
+              sx={{ textTransform: "none" }}
+            >
+              Back
+            </Button>
 
-            {/* Country + City selection */}
-            <Stack direction="row" spacing={2}>
-              <EuropeCountryAutocomplete
-                value={country}
-                onChange={setCountry}
-                label="Country"
-                helperText="Start typing the country (minimum 3 letters)."
-              />
-              <CityAutocomplete
-                countryCode={country?.code ?? null}
-                value={cityOption}
-                onChange={setCityOption}
-                label="City"
-                helperText="Start typing the city name in that country."
-              />
-            </Stack>
-
-            {/* Map + radius selector */}
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
-                Coverage area
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                After selecting country and city, click on the map to drop a pin
-                where you&apos;re based. Use the slider to set how far
-                you&apos;re willing to travel from that point.
-              </Typography>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  height: 320,
-                  borderRadius: "12px",
-                  overflow: "hidden",
-                  border: "1px solid #E0E7FF",
-                  boxShadow: 1,
-                }}
-              >
-                <div
-                  ref={mapContainerRef}
-                  style={{ width: "100%", height: "100%" }}
-                />
-              </Box>
-
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  Radius from pin: <strong>{radiusKm.toFixed(1)} km</strong>
+            <Stack direction="row" spacing={2} alignItems="center">
+              {submitError && (
+                <Typography variant="body2" color="error">
+                  {submitError}
                 </Typography>
-                <Slider
-                  value={radiusKm}
-                  min={0}
-                  max={25}
-                  step={0.5}
-                  onChange={(_e, value) => setRadiusKm(value as number)}
-                  valueLabelDisplay="auto"
-                />
-              </Box>
-            </Box>
+              )}
 
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Price for a viewing"
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                required
-                fullWidth
-              />
-              <TextField
-                label="Currency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                required
-                fullWidth
-              />
-            </Stack>
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Phone (optional)"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              fullWidth
-            />
-
-            {/* Image Upload */}
-            <Stack spacing={2} sx={{ mt: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
-                Offer cover picture
-              </Typography>
-              <Button
-                component="label"
-                variant="contained"
-                sx={{
-                  backgroundColor: "#2054CC",
-                  color: "#FFFFFF",
-                  textTransform: "none",
-                  "&:hover": { backgroundColor: "#6C8DFF" },
-                  alignSelf: "flex-start",
-                }}
-              >
-                Choose Image
-                <input
-                  hidden
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFile}
-                />
-              </Button>
-
-              {preview && (
-                <Stack direction="row" alignItems="center" spacing={2}>
-                  <Avatar
-                    src={preview}
-                    alt="preview"
-                    sx={{ width: 56, height: 56 }}
-                  />
-                  <Typography variant="body2">{file?.name}</Typography>
-                </Stack>
+              {activeStep < OFFER_STEPS.length - 1 ? (
+                <Button
+                  variant="contained"
+                  onClick={handleNext}
+                  disabled={!canGoNext() || submitting}
+                  sx={{
+                    textTransform: "none",
+                    px: 4,
+                    py: 1.2,
+                    backgroundColor: COLORS.accent,
+                    color: COLORS.navyDark,
+                    fontWeight: 600,
+                    "&:hover": {
+                      backgroundColor: "#f6a76a",
+                    },
+                  }}
+                >
+                  Save & Continue
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  onClick={handlePublish}
+                  disabled={submitting || !canGoNext()}
+                  sx={{
+                    textTransform: "none",
+                    px: 4,
+                    py: 1.2,
+                    backgroundColor: COLORS.accent,
+                    color: COLORS.navyDark,
+                    fontWeight: 700,
+                    "&:hover": {
+                      backgroundColor: "#f6a76a",
+                    },
+                  }}
+                >
+                  {submitting ? "Publishing..." : "Publish Offer"}
+                </Button>
               )}
             </Stack>
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              variant="contained"
-              sx={{
-                mt: 3,
-                backgroundColor: "#0F3EA3",
-                color: "#FFFFFF",
-                fontWeight: 600,
-                textTransform: "none",
-                py: 1.5,
-                "&:hover": { backgroundColor: "#2054CC" },
-              }}
-            >
-              Submit Offer
-            </Button>
-          </form>
+          </Stack>
         </Paper>
-      </Box>
+      </Container>
     </Box>
   );
 }

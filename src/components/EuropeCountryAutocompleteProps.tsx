@@ -16,8 +16,6 @@ export interface EuropeCountryAutocompleteProps {
   label?: string;
   helperText?: string;
   required?: boolean;
-
-  // NEW: styling + placeholder so the parent (SearchHeader) can control look
   sx?: SxProps<Theme>;
   placeholder?: string;
 }
@@ -81,39 +79,17 @@ export function EuropeCountryAutocomplete({
   sx,
   placeholder,
 }: EuropeCountryAutocompleteProps) {
-  const [inputValue, setInputValue] = React.useState("");
-
-  // Filter options only when user typed at least 2 characters
-  const filteredOptions =
-    inputValue.trim().length >= 2
-      ? EUROPEAN_COUNTRIES.filter((c) =>
-          c.name.toLowerCase().includes(inputValue.toLowerCase())
-        )
-      : [];
-
   return (
     <Autocomplete<Country, false, false, false>
-      sx={sx} // <-- allow parent styling
-      options={filteredOptions}
+      sx={sx}
+      options={EUROPEAN_COUNTRIES}
       value={value}
-      onChange={(_event, newValue) => {
-        onChange(newValue);
-      }}
-      inputValue={inputValue}
-      onInputChange={(_event, newInputValue) => {
-        setInputValue(newInputValue);
-      }}
+      onChange={(_event, newValue) => onChange(newValue)}
       getOptionLabel={(option) => option.name}
-      isOptionEqualToValue={(option, val) => option.code === val.code}
-      noOptionsText={
-        inputValue.trim().length < 2
-          ? "Type at least 2 letters..."
-          : "No matching countries"
-      }
+      isOptionEqualToValue={(option, val) => !!val && option.code === val.code}
       renderInput={(params) => (
         <TextField
           {...params}
-          // label can be empty for the search pill (then we only show placeholder)
           label={label}
           placeholder={placeholder}
           required={required}

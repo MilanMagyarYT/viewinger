@@ -28,22 +28,20 @@ type PhotonResponse = {
 
 export type CityOption = {
   id: string;
-  name: string; // short name, e.g. "Amsterdam"
-  displayName: string; // full label like "Amsterdam, North Holland, Netherlands"
+  name: string;
+  displayName: string;
   lat: number;
   lng: number;
   raw: PhotonFeature;
 };
 
 export interface CityAutocompleteProps {
-  countryCode: string | null; // ISO 2-letter code, e.g. "NL"
+  countryCode: string | null;
   value: CityOption | null;
   onChange: (city: CityOption | null) => void;
   label?: string;
   helperText?: string;
   required?: boolean;
-
-  // NEW: styling + placeholder to match the search pill
   sx?: SxProps<Theme>;
   placeholder?: string;
 }
@@ -72,6 +70,7 @@ export function CityAutocomplete({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countryCode]);
 
+  // Fetch cities when user types
   React.useEffect(() => {
     if (!countryCode) {
       setOptions([]);
@@ -108,7 +107,6 @@ export function CityAutocomplete({
         }
 
         const data = (await res.json()) as PhotonResponse;
-
         if (!active) return;
 
         const isoLower = countryCode.toLowerCase();
@@ -117,12 +115,10 @@ export function CityAutocomplete({
           .filter((feature) => {
             const p = feature.properties || {};
 
-            // Filter by country (if Photon gives countrycode, prefer that)
             if (p.countrycode && p.countrycode.toLowerCase() !== isoLower) {
               return false;
             }
 
-            // Keep only place-like things (city / town / village / hamlet / suburb)
             const isPlace = p.osm_key === "place" || !!p.city || !!p.name;
             if (!isPlace) return false;
 
@@ -163,7 +159,6 @@ export function CityAutocomplete({
             } as CityOption;
           });
 
-        // Deduplicate by name + country
         const seen = new Set<string>();
         const deduped: CityOption[] = [];
         for (const c of cityResults) {
@@ -174,7 +169,7 @@ export function CityAutocomplete({
           }
         }
 
-        setOptions(deduped);
+        if (active) setOptions(deduped);
       } catch (e) {
         console.error("City autocomplete error", e);
         if (active) setOptions([]);
@@ -187,13 +182,13 @@ export function CityAutocomplete({
       active = false;
       clearTimeout(handle);
     };
-  }, [countryCode, inputValue, onChange]);
+  }, [countryCode, inputValue]); // <-- removed onChange here
 
   const disabled = !countryCode;
 
   return (
     <Autocomplete<CityOption, false, false, false>
-      sx={sx} // <-- allow parent styling
+      sx={sx}
       options={options}
       value={value}
       loading={loading}
