@@ -19,30 +19,88 @@ import MenuBar from "@/components/MenuBar";
 import { Offer } from "@/types/Offer";
 import { retrieveOffersFromDatabase } from "@/data/retrieveOffers";
 
+import { db } from "@/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+
+type OfferWithUid = Offer & {
+  uid?: string;
+  name?: string;
+  cityName?: string;
+  countryName?: string;
+};
+
 export default function SearchForOffersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const city = searchParams.get("city");
   const country = searchParams.get("country");
 
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const [offers, setOffers] = useState<OfferWithUid[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [cityInput, setCityInput] = useState(city ?? "");
   const [countryInput, setCountryInput] = useState(country ?? "");
 
+  // lister verification cache: uid -> isVerified
+  const [listerVerification, setListerVerification] = useState<
+    Record<string, { isVerified: boolean }>
+  >({});
+
   useEffect(() => {
     const fetchOffers = async () => {
-      if (!city && !country) return;
+      if (!city && !country) {
+        setLoading(false);
+        return;
+      }
       const results = await retrieveOffersFromDatabase(
         city ?? "",
         country ?? ""
       );
-      setOffers(results);
+      setOffers(results as OfferWithUid[]);
       setLoading(false);
     };
     fetchOffers();
   }, [city, country]);
+
+  // load verification state for listers used in current offers
+  useEffect(() => {
+    const loadVerification = async () => {
+      const uids = Array.from(
+        new Set(offers.map((o) => o.uid).filter((uid): uid is string => !!uid))
+      );
+      if (!uids.length) return;
+
+      const newMap: Record<string, { isVerified: boolean }> = {
+        ...listerVerification,
+      };
+
+      await Promise.all(
+        uids.map(async (uid) => {
+          if (newMap[uid] !== undefined) return; // already loaded
+          try {
+            const snap = await getDoc(doc(db, "users", uid));
+            if (snap.exists()) {
+              const data = snap.data() as any;
+              newMap[uid] = { isVerified: !!data.isVerified };
+            } else {
+              newMap[uid] = { isVerified: false };
+            }
+          } catch (err) {
+            console.error("Failed to load lister verification:", err);
+            newMap[uid] = { isVerified: false };
+          }
+        })
+      );
+
+      setListerVerification(newMap);
+    };
+
+    if (offers.length > 0) {
+      loadVerification();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offers]);
 
   const handleViewChange = (
     _: React.MouseEvent<HTMLElement>,
@@ -55,12 +113,25 @@ export default function SearchForOffersPage() {
     router.push(`/search-for-offers/${offerId}`);
   };
 
+  const handleListerClick = (e: React.MouseEvent, uid: string | undefined) => {
+    if (!uid) return;
+    e.stopPropagation();
+    router.push(`/lister/${uid}`);
+  };
+
   const handleSearch = () => {
     const params = new URLSearchParams({
       city: cityInput.trim(),
       country: countryInput.trim(),
     });
     router.push(`/search-for-offers?${params.toString()}`);
+  };
+
+  const getLocationLabel = (offer: OfferWithUid) => {
+    const c = offer.cityName || (offer as any).city;
+    const country = offer.countryName || (offer as any).country;
+    if (c && country) return `${c}, ${country}`;
+    return c || country || "";
   };
 
   // -------- JSX -----------
@@ -228,20 +299,97 @@ export default function SearchForOffersPage() {
           <Typography>No offers found.</Typography>
         ) : viewMode === "grid" ? (
           <Grid container spacing={3}>
-            {offers.map((offer) => (
-              <Grid item xs={12} sm={6} md={4} key={offer.id}>
+            {offers.map((offer) => {
+              const uid = offer.uid;
+              const isVerified =
+                uid && listerVerification[uid]?.isVerified === true;
+
+              return (
+                <Grid item xs={12} sm={6} md={4} key={offer.id}>
+                  <Paper
+                    onClick={() => handleOfferClick(offer.id)}
+                    elevation={3}
+                    sx={{
+                      p: 2,
+                      borderRadius: "12px",
+                      cursor: "pointer",
+                      transition: "transform 0.2s ease",
+                      "&:hover": {
+                        transform: "translateY(-3px)",
+                        boxShadow: "0 6px 20px rgba(0,0,0,0.1)",
+                      },
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={offer.imageURL}
+                      alt={offer.title}
+                      sx={{
+                        width: "100%",
+                        height: 180,
+                        objectFit: "cover",
+                        borderRadius: "8px",
+                        mb: 2,
+                      }}
+                    />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      {offer.title}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "gray" }}>
+                      {getLocationLabel(offer)}
+                    </Typography>
+
+                    {/* Lister + badge */}
+                    <Box
+                      sx={{
+                        mt: 0.5,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#0F3EA3",
+                          textDecoration: uid ? "underline" : "none",
+                          cursor: uid ? "pointer" : "default",
+                        }}
+                        onClick={(e) => handleListerClick(e, uid)}
+                      >
+                        {offer.name || "Lister"}
+                      </Typography>
+                      <VerifiedBadge isVerified={!!isVerified} size="small" />
+                    </Box>
+
+                    <Typography variant="body1" sx={{ mt: 1, fontWeight: 500 }}>
+                      {offer.price} {offer.currency}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              );
+            })}
+          </Grid>
+        ) : (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {offers.map((offer) => {
+              const uid = offer.uid;
+              const isVerified =
+                uid && listerVerification[uid]?.isVerified === true;
+
+              return (
                 <Paper
+                  key={offer.id}
                   onClick={() => handleOfferClick(offer.id)}
-                  elevation={3}
                   sx={{
+                    display: "flex",
+                    alignItems: "center",
                     p: 2,
                     borderRadius: "12px",
                     cursor: "pointer",
-                    transition: "transform 0.2s ease",
-                    "&:hover": {
-                      transform: "translateY(-3px)",
-                      boxShadow: "0 6px 20px rgba(0,0,0,0.1)",
-                    },
+                    transition: "background 0.2s ease",
+                    "&:hover": { backgroundColor: "#F9FAFF" },
                   }}
                 >
                   <Box
@@ -249,67 +397,55 @@ export default function SearchForOffersPage() {
                     src={offer.imageURL}
                     alt={offer.title}
                     sx={{
-                      width: "100%",
-                      height: 180,
-                      objectFit: "cover",
+                      width: 160,
+                      height: 120,
                       borderRadius: "8px",
-                      mb: 2,
+                      objectFit: "cover",
+                      mr: 2,
                     }}
                   />
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    {offer.title}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: "gray" }}>
-                    {offer.city}, {offer.country}
-                  </Typography>
-                  <Typography variant="body1" sx={{ mt: 1, fontWeight: 500 }}>
-                    {offer.price} {offer.currency}
-                  </Typography>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      {offer.title}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "gray" }}>
+                      {getLocationLabel(offer)}
+                    </Typography>
+
+                    {/* Lister + badge */}
+                    <Box
+                      sx={{
+                        mt: 0.5,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#0F3EA3",
+                          textDecoration: uid ? "underline" : "none",
+                          cursor: uid ? "pointer" : "default",
+                        }}
+                        onClick={(e) => handleListerClick(e, uid)}
+                      >
+                        {offer.name || "Lister"}
+                      </Typography>
+                      <VerifiedBadge isVerified={!!isVerified} size="small" />
+                    </Box>
+
+                    <Typography
+                      variant="body1"
+                      sx={{ mt: 0.5, fontWeight: 500 }}
+                    >
+                      {offer.price} {offer.currency}
+                    </Typography>
+                  </Box>
                 </Paper>
-              </Grid>
-            ))}
-          </Grid>
-        ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {offers.map((offer) => (
-              <Paper
-                key={offer.id}
-                onClick={() => handleOfferClick(offer.id)}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  p: 2,
-                  borderRadius: "12px",
-                  cursor: "pointer",
-                  transition: "background 0.2s ease",
-                  "&:hover": { backgroundColor: "#F9FAFF" },
-                }}
-              >
-                <Box
-                  component="img"
-                  src={offer.imageURL}
-                  alt={offer.title}
-                  sx={{
-                    width: 160,
-                    height: 120,
-                    borderRadius: "8px",
-                    objectFit: "cover",
-                    mr: 2,
-                  }}
-                />
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    {offer.title}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: "gray" }}>
-                    {offer.city}, {offer.country}
-                  </Typography>
-                  <Typography variant="body1" sx={{ mt: 0.5, fontWeight: 500 }}>
-                    {offer.price} {offer.currency}
-                  </Typography>
-                </Box>
-              </Paper>
-            ))}
+              );
+            })}
           </Box>
         )}
       </Box>

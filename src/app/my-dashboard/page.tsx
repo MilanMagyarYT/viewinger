@@ -33,10 +33,12 @@ import {
   where,
   setDoc,
   getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from "@/firebase";
 import { Offer } from "@/types/Offer";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 export default function MyDashboardPage() {
   const router = useRouter();
@@ -54,6 +56,8 @@ export default function MyDashboardPage() {
     bio: "",
     profileImage: "",
   });
+
+  const [isVerified, setIsVerified] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -73,8 +77,8 @@ export default function MyDashboardPage() {
         router.replace("/authentication/sign-in");
       } else {
         setUser(currentUser);
-        // Load profile from Firestore
-        await fetchUserProfile(currentUser.uid);
+        // Load profile & verification from Firestore
+        await fetchUserProfile(currentUser);
         // Load offers
         await fetchOffers(currentUser.uid);
       }
@@ -84,30 +88,50 @@ export default function MyDashboardPage() {
   }, [router]);
 
   // --- Fetch profile from Firestore ---
-  const fetchUserProfile = async (uid: string) => {
+  const fetchUserProfile = async (u: User) => {
     try {
-      const userRef = doc(dbInstance, "users", uid);
+      const userRef = doc(dbInstance, "users", u.uid);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
-        const data = userSnap.data();
+        const data = userSnap.data() as any;
+
+        // Map languages to a string for editing
+        let languagesString = "";
+        if (Array.isArray(data.languages)) {
+          languagesString = data.languages.join(", ");
+        } else if (typeof data.languages === "string") {
+          languagesString = data.languages;
+        } else if (typeof data.languagesText === "string") {
+          languagesString = data.languagesText;
+        }
+
         setProfile({
-          name: data.name ?? "",
-          email: data.email ?? user?.email ?? "",
-          phone: data.phone ?? "",
-          city: data.city ?? "",
-          country: data.country ?? "",
-          languages: data.languages ?? "",
+          name:
+            data.name ??
+            data.displayName ??
+            data.legalName ??
+            u.displayName ??
+            "",
+          email: data.email ?? u.email ?? "",
+          phone: data.phone ?? data.phoneNumber ?? "",
+          city: data.city ?? data.baseCity ?? "",
+          country:
+            data.country ?? data.baseCountry ?? data.countryOfResidence ?? "",
+          languages: languagesString,
           yearsOfExperience: data.yearsOfExperience ?? "",
           bio: data.bio ?? "",
-          profileImage: data.profileImage ?? "",
+          profileImage: data.profileImage ?? data.photoURL ?? "",
         });
+
+        setIsVerified(!!data.isVerified);
       } else {
         // First-time login — prefill with auth values
         setProfile((p) => ({
           ...p,
-          name: user?.displayName || "",
-          email: user?.email || "",
+          name: u.displayName || "",
+          email: u.email || "",
         }));
+        setIsVerified(false);
       }
     } catch (err) {
       console.error("Error fetching profile:", err);
@@ -120,9 +144,9 @@ export default function MyDashboardPage() {
       const offersCol = collection(dbInstance, "offers");
       const q = query(offersCol, where("uid", "==", uid));
       const snap = await getDocs(q);
-      const list = snap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      const list = snap.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
       })) as Offer[];
       setOffers(list);
     } catch (error) {
@@ -211,12 +235,29 @@ export default function MyDashboardPage() {
       }
 
       const userRef = doc(dbInstance, "users", user.uid);
-      await setDoc(userRef, {
-        ...profile,
-        profileImage: profileImageURL,
-        email: user.email,
-        updatedAt: new Date(),
-      });
+
+      // Important: use merge so we don't wipe verification fields
+      await setDoc(
+        userRef,
+        {
+          name: profile.name,
+          email: user.email,
+          phone: profile.phone,
+          city: profile.city,
+          country: profile.country,
+          // keep dashboard languages as a separate string field
+          languagesText: profile.languages,
+          yearsOfExperience: profile.yearsOfExperience,
+          bio: profile.bio,
+          profileImage: profileImageURL,
+          // help the verification page by also maintaining baseCity/baseCountry & phoneNumber
+          baseCity: profile.city || undefined,
+          baseCountry: profile.country || undefined,
+          phoneNumber: profile.phone || undefined,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
       setProfile((p) => ({ ...p, profileImage: profileImageURL }));
       setEditOpen(false);
@@ -271,14 +312,14 @@ export default function MyDashboardPage() {
           My Dashboard
         </Typography>
         <Typography variant="subtitle1" sx={{ color: "rgba(255,255,255,0.9)" }}>
-          Manage your profile and active offers on Viewinger.
+          Manage your profile, verification and active offers on Viewinger.
         </Typography>
       </Box>
 
       {/* Main Content */}
       <Box sx={{ maxWidth: 1200, mx: "auto", py: 6, px: 3 }}>
         <Grid container spacing={4}>
-          {/* Seller Profile */}
+          {/* Seller Profile + Verification */}
           <Grid item xs={12} md={4}>
             <Paper
               elevation={4}
@@ -303,27 +344,71 @@ export default function MyDashboardPage() {
                 >
                   {profile.name?.charAt(0)}
                 </Avatar>
-                <Typography variant="h6">{profile.name}</Typography>
+
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  justifyContent="center"
+                >
+                  <Typography variant="h6">{profile.name}</Typography>
+                  <VerifiedBadge isVerified={isVerified} size="small" />
+                </Stack>
+
                 <Typography variant="body2" color="text.secondary">
                   {profile.email}
                 </Typography>
 
-                <Button
-                  variant="outlined"
-                  onClick={() => setEditOpen(true)}
-                  sx={{
-                    color: "#0F3EA3",
-                    borderColor: "#6C8DFF",
-                    fontWeight: 600,
-                    textTransform: "none",
-                    "&:hover": {
-                      borderColor: "#2054CC",
-                      backgroundColor: "#EAF0FF",
-                    },
-                  }}
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 0.5, textAlign: "center" }}
                 >
-                  Edit Profile
-                </Button>
+                  {isVerified
+                    ? "Your account is verified. Guests will see your verified badge on your offers."
+                    : "You’re not verified yet. Complete a few steps to earn a verified badge and build more trust."}
+                </Typography>
+
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{ mt: 1 }}
+                  justifyContent="center"
+                  flexWrap="wrap"
+                >
+                  {!isVerified && (
+                    <Button
+                      variant="contained"
+                      onClick={() => router.push("/verification")}
+                      sx={{
+                        backgroundColor: "#2054CC",
+                        color: "#FFF",
+                        fontWeight: 600,
+                        textTransform: "none",
+                        "&:hover": { backgroundColor: "#6C8DFF" },
+                      }}
+                    >
+                      Get Verified
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="outlined"
+                    onClick={() => setEditOpen(true)}
+                    sx={{
+                      color: "#0F3EA3",
+                      borderColor: "#6C8DFF",
+                      fontWeight: 600,
+                      textTransform: "none",
+                      "&:hover": {
+                        borderColor: "#2054CC",
+                        backgroundColor: "#EAF0FF",
+                      },
+                    }}
+                  >
+                    Edit Profile
+                  </Button>
+                </Stack>
               </Stack>
             </Paper>
           </Grid>
@@ -509,7 +594,10 @@ export default function MyDashboardPage() {
               type="number"
               value={profile.yearsOfExperience}
               onChange={(e) =>
-                setProfile({ ...profile, yearsOfExperience: e.target.value })
+                setProfile({
+                  ...profile,
+                  yearsOfExperience: e.target.value,
+                })
               }
             />
             <TextField

@@ -24,7 +24,10 @@ import {
   query,
   where,
   QueryConstraint,
+  doc,
+  getDoc,
 } from "firebase/firestore";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 // ---- Types ----
 
@@ -53,7 +56,6 @@ type GeocodedAddress = {
   address: NominatimResult["address"];
 };
 
-// We only need a subset of fields + distance
 type OfferHit = {
   id: string;
   title: string;
@@ -64,6 +66,8 @@ type OfferHit = {
   countryName?: string;
   coverageRadiusKm: number;
   distanceKm: number;
+  uid?: string;
+  listerName?: string;
 };
 
 // ---- Helpers ----
@@ -134,7 +138,7 @@ function haversineDistanceKm(
   lat2: number,
   lng2: number
 ): number {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
 
   const dLat = toRad(lat2 - lat1);
@@ -183,7 +187,7 @@ async function fetchOffersCoveringPoint(params: {
       typeof centerLng !== "number" ||
       typeof coverageRadiusKm !== "number"
     ) {
-      return; // skip malformed offers
+      return;
     }
 
     const distanceKm = haversineDistanceKm(lat, lng, centerLat, centerLng);
@@ -200,11 +204,12 @@ async function fetchOffersCoveringPoint(params: {
         countryName: data.countryName ?? data.country ?? undefined,
         coverageRadiusKm,
         distanceKm,
+        uid: data.uid,
+        listerName: data.name ?? data.listerName ?? undefined,
       });
     }
   });
 
-  // Sort by distance ascending
   results.sort((a, b) => a.distanceKm - b.distanceKm);
 
   return results;
@@ -228,6 +233,11 @@ export default function AddressStructuredSearchPage() {
 
   const [offers, setOffers] = React.useState<OfferHit[]>([]);
   const [offersLoading, setOffersLoading] = React.useState(false);
+
+  // uid -> isVerified
+  const [listerVerification, setListerVerification] = React.useState<
+    Record<string, { isVerified: boolean }>
+  >({});
 
   const isFormValid = !!country && !!city && street.trim().length > 0;
 
@@ -256,7 +266,6 @@ export default function AddressStructuredSearchPage() {
 
       setResult(geocoded);
 
-      // Fetch offers that cover this point
       setOffersLoading(true);
       const hits = await fetchOffersCoveringPoint({
         lat: geocoded.lat,
@@ -273,12 +282,56 @@ export default function AddressStructuredSearchPage() {
     }
   }
 
+  // load verification for listers in `offers`
+  React.useEffect(() => {
+    const loadVerification = async () => {
+      const uids = Array.from(
+        new Set(offers.map((o) => o.uid).filter((uid): uid is string => !!uid))
+      );
+      if (!uids.length) return;
+
+      const newMap: Record<string, { isVerified: boolean }> = {
+        ...listerVerification,
+      };
+
+      await Promise.all(
+        uids.map(async (uid) => {
+          if (newMap[uid] !== undefined) return;
+          try {
+            const snap = await getDoc(doc(db, "users", uid));
+            if (snap.exists()) {
+              const data = snap.data() as any;
+              newMap[uid] = { isVerified: !!data.isVerified };
+            } else {
+              newMap[uid] = { isVerified: false };
+            }
+          } catch (err) {
+            console.error("Failed to load lister verification:", err);
+            newMap[uid] = { isVerified: false };
+          }
+        })
+      );
+
+      setListerVerification(newMap);
+    };
+
+    if (offers.length > 0) {
+      loadVerification();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offers]);
+
   const mapUrl =
     result != null ? buildOsmEmbedUrl(result.lat, result.lng) : null;
 
   const handleOfferClick = (offerId: string) => {
-    // reuse your existing offer-detail page route
     router.push(`/search-for-offers/${offerId}`);
+  };
+
+  const handleListerClick = (e: React.MouseEvent, uid: string | undefined) => {
+    if (!uid) return;
+    e.stopPropagation();
+    router.push(`/lister/${uid}`);
   };
 
   return (
@@ -422,61 +475,92 @@ export default function AddressStructuredSearchPage() {
                 gap: 2,
               }}
             >
-              {offers.map((offer) => (
-                <Paper
-                  key={offer.id}
-                  onClick={() => handleOfferClick(offer.id)}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    p: 2,
-                    borderRadius: "12px",
-                    cursor: "pointer",
-                    transition: "background 0.2s ease, transform 0.15s ease",
-                    "&:hover": {
-                      backgroundColor: "#F9FAFF",
-                      transform: "translateY(-2px)",
-                    },
-                  }}
-                >
-                  {offer.imageURL && (
-                    <Box
-                      component="img"
-                      src={offer.imageURL}
-                      alt={offer.title}
-                      sx={{
-                        width: 120,
-                        height: 90,
-                        borderRadius: "8px",
-                        objectFit: "cover",
-                        mr: 2,
-                      }}
-                    />
-                  )}
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      {offer.title}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: "gray" }}>
-                      {(offer.cityName || "City unknown") +
-                        (offer.countryName ? `, ${offer.countryName}` : "")}
-                    </Typography>
-                    <Typography
-                      variant="body1"
-                      sx={{ mt: 0.5, fontWeight: 500 }}
-                    >
-                      {offer.price} {offer.currency}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      sx={{ mt: 0.5, display: "block", color: "gray" }}
-                    >
-                      ~{offer.distanceKm.toFixed(1)} km from address (coverage
-                      radius {offer.coverageRadiusKm.toFixed(1)} km)
-                    </Typography>
-                  </Box>
-                </Paper>
-              ))}
+              {offers.map((offer) => {
+                const uid = offer.uid;
+                const isVerified =
+                  uid && listerVerification[uid]?.isVerified === true;
+
+                return (
+                  <Paper
+                    key={offer.id}
+                    onClick={() => handleOfferClick(offer.id)}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      p: 2,
+                      borderRadius: "12px",
+                      cursor: "pointer",
+                      transition: "background 0.2s ease, transform 0.15s ease",
+                      "&:hover": {
+                        backgroundColor: "#F9FAFF",
+                        transform: "translateY(-2px)",
+                      },
+                    }}
+                  >
+                    {offer.imageURL && (
+                      <Box
+                        component="img"
+                        src={offer.imageURL}
+                        alt={offer.title}
+                        sx={{
+                          width: 120,
+                          height: 90,
+                          borderRadius: "8px",
+                          objectFit: "cover",
+                          mr: 2,
+                        }}
+                      />
+                    )}
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        {offer.title}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "gray" }}>
+                        {(offer.cityName || "City unknown") +
+                          (offer.countryName ? `, ${offer.countryName}` : "")}
+                      </Typography>
+
+                      {/* Lister + badge */}
+                      <Box
+                        sx={{
+                          mt: 0.5,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: "#0F3EA3",
+                            textDecoration: uid ? "underline" : "none",
+                            cursor: uid ? "pointer" : "default",
+                          }}
+                          onClick={(e) => handleListerClick(e, uid)}
+                        >
+                          {offer.listerName || "Lister"}
+                        </Typography>
+                        <VerifiedBadge isVerified={!!isVerified} size="small" />
+                      </Box>
+
+                      <Typography
+                        variant="body1"
+                        sx={{ mt: 0.5, fontWeight: 500 }}
+                      >
+                        {offer.price} {offer.currency}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ mt: 0.5, display: "block", color: "gray" }}
+                      >
+                        ~{offer.distanceKm.toFixed(1)} km from address (coverage
+                        radius {offer.coverageRadiusKm.toFixed(1)} km)
+                      </Typography>
+                    </Box>
+                  </Paper>
+                );
+              })}
             </Box>
           )}
         </Box>

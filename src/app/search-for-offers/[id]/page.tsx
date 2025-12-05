@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import NextLink from "next/link";
 import {
   Box,
@@ -24,6 +24,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { OffersId } from "@/types/OffersId";
 import OfferDetail from "@/components/OfferDetail";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 interface SellerProfile {
   name?: string;
@@ -35,10 +36,13 @@ interface SellerProfile {
   yearsOfExperience?: string;
   bio?: string;
   profileImage?: string;
+  isVerified?: boolean;
 }
 
 export default function OfferByIdPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
+
   const [offer, setOffer] = useState<OffersId | null>(null);
   const [seller, setSeller] = useState<SellerProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,10 +53,50 @@ export default function OfferByIdPage() {
       try {
         const offerData = await retrieveOfferById(params.id);
         setOffer(offerData);
+
         if (offerData?.uid) {
           const userDoc = await getDoc(doc(db, "users", offerData.uid));
           if (userDoc.exists()) {
-            setSeller(userDoc.data() as SellerProfile);
+            const data = userDoc.data() as any;
+
+            const languagesStr = Array.isArray(data.languages)
+              ? data.languages.join(", ")
+              : data.languages || undefined;
+
+            setSeller({
+              name:
+                data.displayName ||
+                data.legalName ||
+                offerData.name ||
+                "Lister",
+              email: data.email || offerData.email,
+              phone: data.phoneNumber || offerData.phone,
+              city:
+                data.baseCity ||
+                (offerData as any).cityName ||
+                (offerData as any).city,
+              country:
+                data.baseCountry ||
+                data.countryOfResidence ||
+                (offerData as any).countryName ||
+                (offerData as any).country,
+              languages: languagesStr,
+              yearsOfExperience: data.yearsOfExperience,
+              bio: data.bio || "",
+              profileImage: data.profileImage || data.photoURL || "",
+              isVerified: !!data.isVerified,
+            });
+          } else {
+            // Fallback to offer data only
+            setSeller({
+              name: offerData.name,
+              email: offerData.email,
+              phone: offerData.phone,
+              city: (offerData as any).cityName || (offerData as any).city,
+              country:
+                (offerData as any).countryName || (offerData as any).country,
+              isVerified: false,
+            });
           }
         }
       } finally {
@@ -60,6 +104,12 @@ export default function OfferByIdPage() {
       }
     })();
   }, [params.id]);
+
+  const handleViewProfile = () => {
+    if (offer?.uid) {
+      router.push(`/lister/${offer.uid}`);
+    }
+  };
 
   // --- UI ---
   return (
@@ -200,7 +250,9 @@ export default function OfferByIdPage() {
                           bgcolor: "#6C8DFF",
                           fontSize: 36,
                           fontWeight: 600,
+                          cursor: offer?.uid ? "pointer" : "default",
                         }}
+                        onClick={offer?.uid ? handleViewProfile : undefined}
                       >
                         {seller.name?.charAt(0)}
                       </Avatar>
@@ -211,9 +263,40 @@ export default function OfferByIdPage() {
                       >
                         {seller.name}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {seller.city}, {seller.country}
-                      </Typography>
+                      {seller.city && seller.country && (
+                        <Typography variant="body2" color="text.secondary">
+                          {seller.city}, {seller.country}
+                        </Typography>
+                      )}
+
+                      {/* Verified badge + view profile */}
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        sx={{ mt: 1 }}
+                      >
+                        <VerifiedBadge
+                          isVerified={!!seller.isVerified}
+                          size="small"
+                        />
+                        {offer?.uid && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={handleViewProfile}
+                            sx={{
+                              textTransform: "none",
+                              fontSize: 12,
+                              color: "#0F3EA3",
+                              fontWeight: 600,
+                              "&:hover": { textDecoration: "underline" },
+                            }}
+                          >
+                            View profile
+                          </Button>
+                        )}
+                      </Stack>
 
                       <Divider sx={{ my: 2, width: "100%" }} />
 
@@ -247,9 +330,11 @@ export default function OfferByIdPage() {
                       <Divider sx={{ my: 2, width: "100%" }} />
 
                       <Stack spacing={1} sx={{ width: "100%" }}>
-                        <Typography variant="body2">
-                          <strong>Email:</strong> {seller.email}
-                        </Typography>
+                        {seller.email && (
+                          <Typography variant="body2">
+                            <strong>Email:</strong> {seller.email}
+                          </Typography>
+                        )}
                         {seller.phone && (
                           <Typography variant="body2">
                             <strong>Phone:</strong> {seller.phone}
@@ -257,21 +342,23 @@ export default function OfferByIdPage() {
                         )}
                       </Stack>
 
-                      <Button
-                        variant="contained"
-                        sx={{
-                          mt: 3,
-                          backgroundColor: "#2054CC",
-                          color: "#FFFFFF",
-                          textTransform: "none",
-                          fontWeight: 600,
-                          width: "100%",
-                          "&:hover": { backgroundColor: "#6C8DFF" },
-                        }}
-                        href={`mailto:${seller.email}`}
-                      >
-                        Contact Seller
-                      </Button>
+                      {seller.email && (
+                        <Button
+                          variant="contained"
+                          sx={{
+                            mt: 3,
+                            backgroundColor: "#2054CC",
+                            color: "#FFFFFF",
+                            textTransform: "none",
+                            fontWeight: 600,
+                            width: "100%",
+                            "&:hover": { backgroundColor: "#6C8DFF" },
+                          }}
+                          href={`mailto:${seller.email}`}
+                        >
+                          Contact Seller
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <Typography color="text.secondary">
