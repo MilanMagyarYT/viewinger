@@ -7,10 +7,22 @@ import {
   Typography,
   Paper,
   Button,
-  Divider,
   CircularProgress,
+  Container,
+  Stack,
+  IconButton,
 } from "@mui/material";
+import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
+import NearMeOutlinedIcon from "@mui/icons-material/NearMeOutlined";
+import SearchOutlinedIcon from "@mui/icons-material/SearchOutlined";
+import {
+  StarRounded,
+  ViewModuleRounded,
+  ViewListRounded,
+  ArrowDropDownRounded,
+} from "@mui/icons-material";
 import { useRouter } from "next/navigation";
+import MenuBar from "@/components/MenuBar";
 import { CityAutocomplete, CityOption } from "@/components/CityAutocomplete";
 import {
   Country,
@@ -28,6 +40,16 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+
+// ---- Palette ----
+
+const COLORS = {
+  accent: "#F8BB84",
+  navyDark: "#2D3250",
+  navy: "#424769",
+  muted: "#737AA8",
+  white: "#FFFFFF",
+};
 
 // ---- Types ----
 
@@ -68,6 +90,11 @@ type OfferHit = {
   distanceKm: number;
   uid?: string;
   listerName?: string;
+};
+
+type ListerMeta = {
+  isVerified: boolean;
+  profileImage?: string | null;
 };
 
 // ---- Helpers ----
@@ -234,9 +261,9 @@ export default function AddressStructuredSearchPage() {
   const [offers, setOffers] = React.useState<OfferHit[]>([]);
   const [offersLoading, setOffersLoading] = React.useState(false);
 
-  // uid -> isVerified
-  const [listerVerification, setListerVerification] = React.useState<
-    Record<string, { isVerified: boolean }>
+  // uid -> meta (verified + profile image)
+  const [listerMeta, setListerMeta] = React.useState<
+    Record<string, ListerMeta>
   >({});
 
   const isFormValid = !!country && !!city && street.trim().length > 0;
@@ -282,17 +309,15 @@ export default function AddressStructuredSearchPage() {
     }
   }
 
-  // load verification for listers in `offers`
+  // load verification & profile image for listers in `offers`
   React.useEffect(() => {
-    const loadVerification = async () => {
+    const loadMeta = async () => {
       const uids = Array.from(
         new Set(offers.map((o) => o.uid).filter((uid): uid is string => !!uid))
       );
       if (!uids.length) return;
 
-      const newMap: Record<string, { isVerified: boolean }> = {
-        ...listerVerification,
-      };
+      const newMap: Record<string, ListerMeta> = { ...listerMeta };
 
       await Promise.all(
         uids.map(async (uid) => {
@@ -301,22 +326,25 @@ export default function AddressStructuredSearchPage() {
             const snap = await getDoc(doc(db, "users", uid));
             if (snap.exists()) {
               const data = snap.data() as any;
-              newMap[uid] = { isVerified: !!data.isVerified };
+              newMap[uid] = {
+                isVerified: !!data.isVerified,
+                profileImage: data.profileImage ?? data.photoURL ?? null,
+              };
             } else {
               newMap[uid] = { isVerified: false };
             }
           } catch (err) {
-            console.error("Failed to load lister verification:", err);
+            console.error("Failed to load lister meta:", err);
             newMap[uid] = { isVerified: false };
           }
         })
       );
 
-      setListerVerification(newMap);
+      setListerMeta(newMap);
     };
 
     if (offers.length > 0) {
-      loadVerification();
+      loadMeta();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offers]);
@@ -334,237 +362,580 @@ export default function AddressStructuredSearchPage() {
     router.push(`/lister/${uid}`);
   };
 
+  const MAP_HEIGHT = 520;
+
   return (
     <Box
-      sx={{
-        maxWidth: 800,
-        mx: "auto",
-        mt: 4,
-        mb: 6,
-        display: "flex",
-        flexDirection: "column",
-        gap: 3,
-      }}
+      sx={{ width: "100vw", minHeight: "100vh", backgroundColor: COLORS.white }}
     >
-      <Typography variant="h4" component="h1">
-        Search viewing address
-      </Typography>
+      <MenuBar />
 
-      {/* Country autocomplete (Europe) */}
-      <EuropeCountryAutocomplete
-        value={country}
-        onChange={setCountry}
-        label="Country"
-        helperText="Start typing the country (minimum 3 letters)."
-      />
-
-      {/* City autocomplete (depends on country) */}
-      <CityAutocomplete
-        countryCode={country?.code ?? null}
-        value={city}
-        onChange={setCity}
-        label="City"
-        helperText="Start typing the city name in the selected country."
-      />
-
-      {/* Street (+ optional number) */}
-      <TextField
-        label="Street (and house number if known)"
-        value={street}
-        onChange={(e) => setStreet(e.target.value)}
-        fullWidth
-        placeholder="Damrak 5 or just Damrak"
-        helperText="You can leave out the house number if you don’t know it yet."
-      />
-
-      {/* Search button + validation */}
-      <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-        <Button
-          variant="contained"
-          disabled={!isFormValid || isSearching}
-          onClick={handleSearch}
-        >
-          {isSearching ? "Searching..." : "Find address & offers"}
-        </Button>
-
-        {!isFormValid && (
-          <Typography variant="body2" color="text.secondary">
-            Select a country, pick a city, and fill in street to search.
+      {/* Top navy header with breadcrumb + pill search */}
+      <Box
+        sx={{
+          backgroundColor: COLORS.navyDark,
+          mt: "3rem",
+          pt: 3,
+          pb: 3,
+        }}
+      >
+        <Container maxWidth="lg">
+          {/* Breadcrumb */}
+          <Typography
+            variant="body2"
+            sx={{ color: COLORS.white, mb: 2, display: "flex", gap: 0.5 }}
+          >
+            <Box component="span">Home</Box>
+            <Box component="span" sx={{ opacity: 0.7 }}>
+              &gt;
+            </Box>
+            <Box component="span" sx={{ fontWeight: 700 }}>
+              Search
+            </Box>
           </Typography>
-        )}
-      </Box>
 
-      {error && (
-        <Paper sx={{ p: 2, borderLeft: "4px solid #f44336" }}>
-          <Typography variant="body2" color="error">
-            {error}
-          </Typography>
-        </Paper>
-      )}
-
-      {/* Result info */}
-      {result && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="subtitle1" fontWeight={600}>
-            Geocoded address
-          </Typography>
-          <Typography variant="body1">{result.label}</Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Lat: <strong>{result.lat}</strong>
-            <br />
-            Lng: <strong>{result.lng}</strong>
-          </Typography>
-        </Paper>
-      )}
-
-      {/* Map preview */}
-      {mapUrl && (
-        <Box>
-          <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-            Map preview
-          </Typography>
-          <Box
-            component="iframe"
-            src={mapUrl}
+          {/* Search pill */}
+          <Paper
+            elevation={6}
             sx={{
-              width: "100%",
-              height: 300,
-              border: 0,
-              borderRadius: 2,
-              boxShadow: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 2.5,
+              px: 3,
+              py: 1.5,
+              borderRadius: "999px",
+              backgroundColor: COLORS.navy,
+              border: `2px solid ${COLORS.muted}`,
             }}
-          />
-          <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-            © OpenStreetMap contributors
-          </Typography>
-        </Box>
-      )}
-
-      <Divider />
-
-      {/* Offers list */}
-      {result && (
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Offers that can cover this viewing
-          </Typography>
-
-          {offersLoading ? (
+          >
+            {/* Country */}
             <Box
               sx={{
-                mt: 2,
-                minHeight: 120,
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
+                flex: 1,
+                minWidth: 0,
+                gap: 1,
               }}
             >
-              <CircularProgress size={24} />
+              <LocationOnOutlinedIcon
+                sx={{ color: COLORS.accent, fontSize: 20 }}
+              />
+              <EuropeCountryAutocomplete
+                value={country}
+                onChange={setCountry}
+                label="Country"
+                helperText=""
+                sx={{
+                  flex: 1,
+                  "& .MuiOutlinedInput-root": {
+                    backgroundColor: "transparent",
+                    color: COLORS.white,
+                    py: 0,
+                    "& fieldset": { border: "none" },
+                  },
+                  "& .MuiInputLabel-root": {
+                    color: COLORS.white,
+                    "&.Mui-focused": { color: COLORS.white },
+                  },
+                  "& .MuiSvgIcon-root": {
+                    color: COLORS.accent,
+                  },
+                }}
+              />
             </Box>
-          ) : offers.length === 0 ? (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              No offers currently cover this exact address. Try a nearby address
-              or check back later.
-            </Typography>
-          ) : (
+
+            {/* Divider */}
             <Box
               sx={{
-                mt: 2,
+                height: 40,
+                borderLeft: `1px solid ${COLORS.muted}`,
+              }}
+            />
+
+            {/* City */}
+            <Box
+              sx={{
                 display: "flex",
-                flexDirection: "column",
-                gap: 2,
+                alignItems: "center",
+                flex: 1,
+                minWidth: 0,
+                gap: 1,
               }}
             >
-              {offers.map((offer) => {
-                const uid = offer.uid;
-                const isVerified =
-                  uid && listerVerification[uid]?.isVerified === true;
+              <NearMeOutlinedIcon sx={{ color: COLORS.accent, fontSize: 20 }} />
+              <CityAutocomplete
+                countryCode={country?.code ?? null}
+                value={city}
+                onChange={setCity}
+                label="City"
+                helperText=""
+                sx={{
+                  flex: 1,
+                  "& .MuiOutlinedInput-root": {
+                    backgroundColor: "transparent",
+                    color: COLORS.white,
+                    py: 0,
+                    "& fieldset": { border: "none" },
+                  },
+                  "& .MuiInputLabel-root": {
+                    color: COLORS.white,
+                    "&.Mui-focused": { color: COLORS.white },
+                  },
+                  "& .MuiSvgIcon-root": {
+                    color: COLORS.accent,
+                  },
+                }}
+              />
+            </Box>
 
-                return (
-                  <Paper
-                    key={offer.id}
-                    onClick={() => handleOfferClick(offer.id)}
+            {/* Divider */}
+            <Box
+              sx={{
+                height: 40,
+                borderLeft: `1px solid ${COLORS.muted}`,
+              }}
+            />
+
+            {/* Address */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                flex: 1.4,
+                minWidth: 0,
+                gap: 1,
+              }}
+            >
+              <SearchOutlinedIcon sx={{ color: COLORS.accent, fontSize: 20 }} />
+              <TextField
+                value={street}
+                onChange={(e) => setStreet(e.target.value)}
+                placeholder="Address"
+                variant="outlined"
+                fullWidth
+                InputProps={{
+                  sx: {
+                    backgroundColor: "transparent",
+                    color: COLORS.white,
+                    "& fieldset": { border: "none" },
+                  },
+                }}
+              />
+            </Box>
+
+            {/* Search button */}
+            <Button
+              variant="contained"
+              disabled={!isFormValid || isSearching}
+              onClick={handleSearch}
+              sx={{
+                ml: 1,
+                borderRadius: "999px",
+                px: 4,
+                py: 1,
+                backgroundColor: COLORS.accent,
+                color: COLORS.navyDark,
+                fontWeight: 600,
+                textTransform: "none",
+                "&:hover": {
+                  backgroundColor: "#f6a76a",
+                },
+              }}
+            >
+              {isSearching ? "Searching..." : "Search"}
+            </Button>
+          </Paper>
+
+          {/* Error message under bar */}
+          {error && (
+            <Box sx={{ mt: 2 }}>
+              <Paper
+                sx={{
+                  p: 2,
+                  borderLeft: `4px solid ${COLORS.accent}`,
+                  backgroundColor: COLORS.white,
+                }}
+              >
+                <Typography variant="body2" color="error">
+                  {error}
+                </Typography>
+              </Paper>
+            </Box>
+          )}
+        </Container>
+      </Box>
+
+      {/* Map + offers big container */}
+      <Container sx={{ py: 5 }} maxWidth="lg">
+        {result && (
+          <Paper
+            elevation={6}
+            sx={{
+              borderRadius: "24px",
+              backgroundColor: COLORS.navyDark,
+              border: `2px solid ${COLORS.muted}`,
+              p: 2,
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                height: MAP_HEIGHT,
+              }}
+            >
+              {/* Map side (60%) */}
+              <Box
+                sx={{
+                  flex: 3,
+                  borderRadius: "18px",
+                  overflow: "hidden",
+                  bgcolor: COLORS.navy,
+                }}
+              >
+                {mapUrl ? (
+                  <Box
+                    component="iframe"
+                    src={mapUrl}
+                    sx={{
+                      width: "100%",
+                      height: "100%",
+                      border: 0,
+                    }}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: COLORS.white,
+                    }}
+                  >
+                    <Typography variant="body2">
+                      Map preview will appear after you search.
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Offers side (40%) */}
+              <Box
+                sx={{
+                  flex: 2,
+                  display: "flex",
+                  flexDirection: "column",
+                  color: COLORS.white,
+                }}
+              >
+                {/* Header row */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    mb: 2,
+                    px: 1,
+                  }}
+                >
+                  <Typography variant="subtitle1">
+                    There are{" "}
+                    <Box
+                      component="span"
+                      sx={{ color: COLORS.accent, fontWeight: 700 }}
+                    >
+                      {offers.length}
+                    </Box>{" "}
+                    offers
+                  </Typography>
+
+                  <Box
                     sx={{
                       display: "flex",
                       alignItems: "center",
-                      p: 2,
-                      borderRadius: "12px",
-                      cursor: "pointer",
-                      transition: "background 0.2s ease, transform 0.15s ease",
-                      "&:hover": {
-                        backgroundColor: "#F9FAFF",
-                        transform: "translateY(-2px)",
-                      },
+                      gap: 1.5,
+                      color: COLORS.muted,
+                      fontSize: 14,
                     }}
                   >
-                    {offer.imageURL && (
-                      <Box
-                        component="img"
-                        src={offer.imageURL}
-                        alt={offer.title}
-                        sx={{
-                          width: 120,
-                          height: 90,
-                          borderRadius: "8px",
-                          objectFit: "cover",
-                          mr: 2,
-                        }}
-                      />
-                    )}
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        {offer.title}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "gray" }}>
-                        {(offer.cityName || "City unknown") +
-                          (offer.countryName ? `, ${offer.countryName}` : "")}
-                      </Typography>
-
-                      {/* Lister + badge */}
+                    <Box
+                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                    >
+                      <Typography variant="body2">Sort by:</Typography>
                       <Box
                         sx={{
-                          mt: 0.5,
                           display: "flex",
                           alignItems: "center",
-                          gap: 1,
-                          flexWrap: "wrap",
+                          gap: 0.25,
+                          cursor: "default",
                         }}
                       >
                         <Typography
                           variant="body2"
-                          sx={{
-                            color: "#0F3EA3",
-                            textDecoration: uid ? "underline" : "none",
-                            cursor: uid ? "pointer" : "default",
-                          }}
-                          onClick={(e) => handleListerClick(e, uid)}
+                          sx={{ fontWeight: 500, color: COLORS.white }}
                         >
-                          {offer.listerName || "Lister"}
+                          Any
                         </Typography>
-                        <VerifiedBadge isVerified={!!isVerified} size="small" />
+                        <ArrowDropDownRounded fontSize="small" />
                       </Box>
-
-                      <Typography
-                        variant="body1"
-                        sx={{ mt: 0.5, fontWeight: 500 }}
-                      >
-                        {offer.price} {offer.currency}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{ mt: 0.5, display: "block", color: "gray" }}
-                      >
-                        ~{offer.distanceKm.toFixed(1)} km from address (coverage
-                        radius {offer.coverageRadiusKm.toFixed(1)} km)
-                      </Typography>
                     </Box>
-                  </Paper>
-                );
-              })}
+
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                      }}
+                    >
+                      <IconButton
+                        size="small"
+                        disableRipple
+                        sx={{
+                          bgcolor: COLORS.accent,
+                          color: COLORS.navyDark,
+                          "&:hover": { bgcolor: COLORS.accent },
+                        }}
+                      >
+                        <ViewModuleRounded fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        disableRipple
+                        sx={{
+                          color: COLORS.muted,
+                          "&:hover": { bgcolor: "transparent" },
+                        }}
+                      >
+                        <ViewListRounded fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                </Box>
+
+                {/* Offers list (scrollable only on right side) */}
+                <Box
+                  sx={{
+                    flex: 1,
+                    overflowY: "auto",
+                    pr: 1,
+                    pb: 1,
+                  }}
+                >
+                  {offersLoading ? (
+                    <Box
+                      sx={{
+                        mt: 2,
+                        minHeight: 120,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <CircularProgress
+                        size={26}
+                        sx={{ color: COLORS.accent }}
+                      />
+                    </Box>
+                  ) : offers.length === 0 ? (
+                    <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                      No offers currently cover this exact address. Try a nearby
+                      address or check back later.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={2}>
+                      {offers.map((offer) => {
+                        const uid = offer.uid;
+                        const meta = uid ? listerMeta[uid] : undefined;
+                        const isVerified = meta?.isVerified === true;
+                        const avatarSrc = meta?.profileImage || undefined;
+
+                        // placeholder rating UI
+                        const ratingValue = 4.5;
+                        const ratingCount = 27;
+
+                        return (
+                          <Paper
+                            key={offer.id}
+                            onClick={() => handleOfferClick(offer.id)}
+                            sx={{
+                              backgroundColor: COLORS.navy,
+                              color: COLORS.white,
+                              borderRadius: "20px",
+                              cursor: "pointer",
+                              overflow: "hidden",
+                              position: "relative",
+                              transition:
+                                "transform 0.15s ease, box-shadow 0.15s ease",
+                              "&:hover": {
+                                transform: "translateY(-2px)",
+                                boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+                              },
+                            }}
+                          >
+                            {/* Cover image */}
+                            {offer.imageURL && (
+                              <Box
+                                component="img"
+                                src={offer.imageURL}
+                                alt={offer.title}
+                                sx={{
+                                  width: "100%",
+                                  height: 140,
+                                  objectFit: "cover",
+                                }}
+                              />
+                            )}
+
+                            {/* Lister avatar overlay */}
+                            {avatarSrc && (
+                              <Box
+                                sx={{
+                                  position: "absolute",
+                                  right: 16,
+                                  top: 100,
+                                  width: 76,
+                                  height: 76,
+                                  borderRadius: "50%",
+                                  overflow: "hidden",
+                                  border: `3px solid ${COLORS.navy}`,
+                                }}
+                              >
+                                <Box
+                                  component="img"
+                                  src={avatarSrc}
+                                  alt={offer.listerName || "Lister"}
+                                  sx={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                  }}
+                                />
+                              </Box>
+                            )}
+
+                            {/* Text content */}
+                            <Box sx={{ p: 2.5, pt: 2.5 }}>
+                              {/* Name + verified */}
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                  mb: 0.5,
+                                }}
+                              >
+                                <VerifiedBadge
+                                  isVerified={isVerified}
+                                  size="small"
+                                />
+                                <Typography
+                                  variant="subtitle1"
+                                  sx={{ fontWeight: 600 }}
+                                >
+                                  {offer.listerName || "Lister"}
+                                </Typography>
+                              </Box>
+
+                              {/* Offer title */}
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  color: COLORS.white,
+                                  opacity: 0.9,
+                                  mb: 1,
+                                }}
+                              >
+                                {offer.title}
+                              </Typography>
+
+                              {/* Rating row (static for now) */}
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.5,
+                                  mb: 1,
+                                }}
+                              >
+                                <StarRounded
+                                  fontSize="small"
+                                  sx={{ color: COLORS.accent }}
+                                />
+                                <Typography
+                                  variant="body2"
+                                  sx={{ color: COLORS.accent, fontWeight: 600 }}
+                                >
+                                  {ratingValue.toFixed(1)}
+                                </Typography>
+                                <Typography
+                                  variant="body2"
+                                  sx={{ color: COLORS.muted }}
+                                >
+                                  ({ratingCount})
+                                </Typography>
+                              </Box>
+
+                              {/* Price & distance */}
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "baseline",
+                                }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  sx={{ color: COLORS.muted }}
+                                >
+                                  ~{offer.distanceKm.toFixed(1)} km away ·
+                                  coverage {offer.coverageRadiusKm.toFixed(1)}{" "}
+                                  km
+                                </Typography>
+                                <Box sx={{ display: "flex", gap: 0.5 }}>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ color: COLORS.muted }}
+                                  >
+                                    from
+                                  </Typography>
+                                  <Typography
+                                    variant="h6"
+                                    sx={{
+                                      color: COLORS.accent,
+                                      fontWeight: 700,
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    {offer.currency} {offer.price}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Box>
+              </Box>
             </Box>
-          )}
-        </Box>
-      )}
+          </Paper>
+        )}
+
+        {!result && (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 1, textAlign: "center" }}
+          >
+            Search for an address above to see who can go to that viewing for
+            you.
+          </Typography>
+        )}
+      </Container>
     </Box>
   );
 }
