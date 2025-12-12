@@ -1,3 +1,4 @@
+// src/app/verification/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import {
   Divider,
   Chip,
   Avatar,
+  Container,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import MenuBar from "@/components/MenuBar";
@@ -20,6 +22,8 @@ import { auth, db } from "@/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
+import SearchBreadcrumb from "@/components/SearchBreadcrumb";
 
 type VerificationForm = {
   baseCity: string;
@@ -297,7 +301,7 @@ export default function VerificationPage() {
       setSaveSuccess(true);
       setFile(null); // clear in-memory file after successful save
 
-      // ✅ Redirect back to dashboard on successful save
+      // Redirect back to dashboard on successful save
       router.push("/my-dashboard");
     } catch (err) {
       console.error("Error saving verification:", err);
@@ -311,12 +315,13 @@ export default function VerificationPage() {
     return (
       <Box
         sx={{
-          width: "100vw",
+          width: "100%",
           height: "100vh",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: "#FFFFFF",
+          overflowX: "hidden",
         }}
       >
         <CircularProgress />
@@ -332,30 +337,43 @@ export default function VerificationPage() {
 
   return (
     <Box
-      sx={{ width: "100vw", minHeight: "100vh", backgroundColor: "#FFFFFF" }}
+      sx={{
+        width: "100%",
+        minHeight: "100vh",
+        backgroundColor: "#FFFFFF",
+        overflowX: "hidden",
+      }}
     >
       <MenuBar />
 
-      {/* Header */}
+      {/* Header band (same family as create-offer / dashboard) */}
       <Box
         sx={{
-          backgroundColor: "#0F3EA3",
-          py: 6,
-          textAlign: "center",
-          marginTop: "3rem",
-          color: "#FFFFFF",
+          backgroundColor: COLORS.navyDark,
+          pt: 6,
+          pb: 4,
+          mt: "3rem",
         }}
       >
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Account Verification
-        </Typography>
-        <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>
-          Complete these steps to earn a verified badge on your offers.
-        </Typography>
+        <Container maxWidth="lg">
+          <SearchBreadcrumb current="Account verification" />
+          <Typography
+            variant="h4"
+            sx={{ color: COLORS.white, fontWeight: 700, mb: 0.5 }}
+          >
+            Account verification
+          </Typography>
+          <Typography
+            variant="subtitle1"
+            sx={{ color: "rgba(255,255,255,0.85)" }}
+          >
+            Complete these steps to earn a verified badge on your offers.
+          </Typography>
+        </Container>
       </Box>
 
-      {/* Content */}
-      <Box sx={{ maxWidth: 800, mx: "auto", py: 6, px: 3 }}>
+      {/* Content (full lg width, light card styling) */}
+      <Container maxWidth="lg" sx={{ py: 6 }}>
         <Paper
           elevation={4}
           sx={{
@@ -373,7 +391,10 @@ export default function VerificationPage() {
               justifyContent="space-between"
             >
               <Stack direction="row" spacing={1.5} alignItems="center">
-                <Typography variant="h6" sx={{ color: "#0F3EA3" }}>
+                <Typography
+                  variant="h6"
+                  sx={{ color: COLORS.navyDark, fontWeight: 600 }}
+                >
                   Verification status
                 </Typography>
                 <VerifiedBadge isVerified={isVerified} size="small" />
@@ -407,7 +428,7 @@ export default function VerificationPage() {
             <Box>
               <Typography
                 variant="subtitle1"
-                sx={{ fontWeight: 600, mb: 1, color: "#0F3EA3" }}
+                sx={{ fontWeight: 600, mb: 1, color: COLORS.navyDark }}
               >
                 1. Profile photo (required)
               </Typography>
@@ -421,9 +442,8 @@ export default function VerificationPage() {
                   <Avatar
                     src={displayPhoto}
                     alt="Profile"
-                    sx={{ width: 80, height: 80, bgcolor: "#6C8DFF" }}
+                    sx={{ width: 80, height: 80, bgcolor: COLORS.navy }}
                   >
-                    {/* fallback letter if no image */}
                     {user.displayName?.charAt(0) ||
                       user.email?.charAt(0) ||
                       "U"}
@@ -446,11 +466,11 @@ export default function VerificationPage() {
                   component="label"
                   variant="contained"
                   sx={{
-                    backgroundColor: "#2054CC",
-                    color: "#FFF",
+                    backgroundColor: COLORS.accent,
+                    color: COLORS.navyDark,
                     textTransform: "none",
                     fontWeight: 600,
-                    "&:hover": { backgroundColor: "#6C8DFF" },
+                    "&:hover": { backgroundColor: "#f6a76a" },
                   }}
                 >
                   {displayPhoto
@@ -472,7 +492,7 @@ export default function VerificationPage() {
             <Box>
               <Typography
                 variant="subtitle1"
-                sx={{ fontWeight: 600, mb: 1, color: "#0F3EA3" }}
+                sx={{ fontWeight: 600, mb: 1, color: COLORS.navyDark }}
               >
                 2. Base city & country
               </Typography>
@@ -480,7 +500,7 @@ export default function VerificationPage() {
                 Tell us where you are usually based. This appears on your public
                 profile and helps guests understand where you operate from.
               </Typography>
-              <Stack direction="row" spacing={2}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
                   label="City of residence"
                   value={form.baseCity}
@@ -502,7 +522,7 @@ export default function VerificationPage() {
             <Box>
               <Typography
                 variant="subtitle1"
-                sx={{ fontWeight: 600, mb: 1, color: "#0F3EA3" }}
+                sx={{ fontWeight: 600, mb: 1, color: COLORS.navyDark }}
               >
                 3. Contact details
               </Typography>
@@ -524,7 +544,7 @@ export default function VerificationPage() {
             <Box>
               <Typography
                 variant="subtitle1"
-                sx={{ fontWeight: 600, mb: 1, color: "#0F3EA3" }}
+                sx={{ fontWeight: 600, mb: 1, color: COLORS.navyDark }}
               >
                 4. Experience & languages
               </Typography>
@@ -609,13 +629,13 @@ export default function VerificationPage() {
                 onClick={() => handleSave(false)}
                 disabled={saving}
                 sx={{
-                  borderColor: "#6C8DFF",
-                  color: "#0F3EA3",
+                  borderColor: COLORS.accent,
+                  color: COLORS.navyDark,
                   textTransform: "none",
                   fontWeight: 600,
                   "&:hover": {
-                    borderColor: "#2054CC",
-                    backgroundColor: "#EAF0FF",
+                    borderColor: COLORS.navyDark,
+                    backgroundColor: "#FFF7F2",
                   },
                 }}
               >
@@ -626,12 +646,12 @@ export default function VerificationPage() {
                 onClick={() => handleSave(true)}
                 disabled={saving || !canBeVerified}
                 sx={{
-                  backgroundColor: canBeVerified ? "#2054CC" : "#9CA3AF",
-                  color: "#FFF",
+                  backgroundColor: canBeVerified ? COLORS.accent : "#9CA3AF",
+                  color: canBeVerified ? COLORS.navyDark : "#FFFFFF",
                   textTransform: "none",
                   fontWeight: 600,
                   "&:hover": {
-                    backgroundColor: canBeVerified ? "#6C8DFF" : "#9CA3AF",
+                    backgroundColor: canBeVerified ? "#f6a76a" : "#9CA3AF",
                   },
                 }}
               >
@@ -640,7 +660,7 @@ export default function VerificationPage() {
             </Stack>
           </Stack>
         </Paper>
-      </Box>
+      </Container>
     </Box>
   );
 }

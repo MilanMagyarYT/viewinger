@@ -97,7 +97,6 @@ export default function CreateOfferPage() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (current) => {
-      console.log("[CreateOffer] onAuthStateChanged", !!current);
       if (!current) {
         router.replace("/authentication/sign-in");
       } else {
@@ -170,14 +169,6 @@ export default function CreateOfferPage() {
       );
     }
 
-    console.log("[Cloudinary] Starting upload", {
-      fileName: file.name,
-      size: file.size,
-      type: file.type,
-      folder,
-      resourceType,
-    });
-
     const form = new FormData();
     form.append("file", file);
     form.append("upload_preset", unsignedPreset);
@@ -216,11 +207,6 @@ export default function CreateOfferPage() {
       throw new Error("File upload failed: Cloudinary returned an error.");
     }
 
-    console.log("[Cloudinary] Upload success", {
-      secure_url: data.secure_url,
-      public_id: data.public_id,
-    });
-
     return {
       url: data.secure_url as string,
       publicId: data.public_id as string,
@@ -240,21 +226,6 @@ export default function CreateOfferPage() {
 
     setSubmitting(true);
     setSubmitError(null);
-
-    console.log("[CreateOffer] Publishing offer with state", {
-      overview,
-      pricing,
-      requirements,
-      portfolio: {
-        hasCoverImage: !!portfolio.coverImageFile,
-        hasVideo: !!portfolio.videoFile,
-        hasPdf: !!portfolio.pdfFile,
-      },
-      user: {
-        uid: user.uid,
-        email: user.email,
-      },
-    });
 
     try {
       const basicTier = pricing.find((p) => p.id === "basic");
@@ -334,17 +305,12 @@ export default function CreateOfferPage() {
         createdAt: serverTimestamp(),
       };
 
-      console.log("[CreateOffer] Creating Firestore offer doc", baseDoc);
-
       const docRef = await addDoc(offersCol, baseDoc);
-
-      console.log("[CreateOffer] Firestore doc created", { id: docRef.id });
 
       // Upload portfolio files (optional ones can be skipped)
       const updates: any = {};
 
       if (portfolio.coverImageFile) {
-        console.log("[CreateOffer] Uploading cover image...");
         const img = await uploadToCloudinary(
           portfolio.coverImageFile,
           `offers/${docRef.id}`,
@@ -357,7 +323,6 @@ export default function CreateOfferPage() {
       }
 
       if (portfolio.videoFile) {
-        console.log("[CreateOffer] Uploading video...");
         const vid = await uploadToCloudinary(
           portfolio.videoFile,
           `offers/${docRef.id}`,
@@ -368,7 +333,6 @@ export default function CreateOfferPage() {
       }
 
       if (portfolio.pdfFile) {
-        console.log("[CreateOffer] Uploading PDF...");
         const pdf = await uploadToCloudinary(
           portfolio.pdfFile,
           `offers/${docRef.id}`,
@@ -378,11 +342,8 @@ export default function CreateOfferPage() {
         updates["portfolio.pdfPublicId"] = pdf.publicId;
       }
 
-      console.log("[CreateOffer] Media upload results", updates);
-
       if (Object.keys(updates).length > 0) {
         await updateDoc(doc(db, "offers", docRef.id), updates);
-        console.log("[CreateOffer] Firestore doc updated with media");
       }
 
       router.replace("/my-dashboard");

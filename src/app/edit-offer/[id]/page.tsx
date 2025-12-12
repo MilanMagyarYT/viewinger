@@ -62,14 +62,6 @@ async function uploadToCloudinary(
     );
   }
 
-  console.log("[Cloudinary] Starting upload", {
-    fileName: file.name,
-    size: file.size,
-    type: file.type,
-    folder,
-    resourceType,
-  });
-
   const form = new FormData();
   form.append("file", file);
   form.append("upload_preset", unsignedPreset);
@@ -98,8 +90,6 @@ async function uploadToCloudinary(
       data?.error?.message || `File upload failed with status ${res.status}.`
     );
   }
-
-  console.log("[Cloudinary] Upload success", data);
 
   return {
     url: data.secure_url as string,
@@ -212,8 +202,6 @@ export default function EditOfferPage() {
 
         const data = snap.data() as any;
         setOfferId(snap.id);
-
-        console.log("[EditOffer] Loaded doc", { id: snap.id, data });
 
         // ---- Overview ----
         const country =
@@ -403,14 +391,6 @@ export default function EditOfferPage() {
 
       const docRef = doc(collection(db, "offers"), offerId);
 
-      console.log("[EditOffer] Saving offer", {
-        id: offerId,
-        overview,
-        pricing,
-        requirements,
-        portfolio,
-      });
-
       const baseUpdates: any = {
         uid: user.uid, // keep ownership
         name: overview.displayName || user.displayName || "",
@@ -450,7 +430,6 @@ export default function EditOfferPage() {
 
       // Upload new portfolio files if provided
       if (portfolio.coverImageFile) {
-        console.log("[EditOffer] Uploading new cover image...");
         const img = await uploadToCloudinary(
           portfolio.coverImageFile,
           `offers/${offerId}`,
@@ -463,7 +442,6 @@ export default function EditOfferPage() {
       }
 
       if (portfolio.videoFile) {
-        console.log("[EditOffer] Uploading new video...");
         const vid = await uploadToCloudinary(
           portfolio.videoFile,
           `offers/${offerId}`,
@@ -474,7 +452,6 @@ export default function EditOfferPage() {
       }
 
       if (portfolio.pdfFile) {
-        console.log("[EditOffer] Uploading new PDF...");
         const pdf = await uploadToCloudinary(
           portfolio.pdfFile,
           `offers/${offerId}`,
@@ -486,7 +463,6 @@ export default function EditOfferPage() {
 
       await updateDoc(docRef, updates);
 
-      console.log("[EditOffer] Offer updated successfully");
       router.replace("/my-dashboard");
     } catch (err: any) {
       console.error("[EditOffer] Save failed:", err);

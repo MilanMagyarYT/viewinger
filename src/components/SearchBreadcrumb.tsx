@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, Breadcrumbs, Typography } from "@mui/material";
 import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
 import { useRouter } from "next/navigation";
 
@@ -13,24 +13,13 @@ export default function SearchBreadcrumb({ current }: SearchBreadcrumbProps) {
   const router = useRouter();
 
   return (
-    <Typography
-      variant="body2"
-      sx={{ color: COLORS.white, mb: 2, display: "flex", gap: 0.5 }}
-    >
-      <Box
-        component="span"
-        onClick={() => {
-          router.replace("/");
-        }}
-      >
+    <Breadcrumbs sx={{ color: "rgba(255,255,255,0.8)", mb: 1 }}>
+      <Typography sx={{ cursor: "pointer" }} onClick={() => router.push("/")}>
         Home
-      </Box>
-      <Box component="span" sx={{ opacity: 0.7 }}>
-        &gt;
-      </Box>
-      <Box component="span" sx={{ fontWeight: 700 }}>
+      </Typography>
+      <Typography sx={{ fontWeight: 600, color: COLORS.white }}>
         {current}
-      </Box>
-    </Typography>
+      </Typography>
+    </Breadcrumbs>
   );
 }

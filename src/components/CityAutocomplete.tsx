@@ -8,7 +8,7 @@ import type { SxProps, Theme } from "@mui/material/styles";
 type PhotonFeature = {
   geometry: {
     type: "Point";
-    coordinates: [number, number]; // [lng, lat]
+    coordinates: [number, number];
   };
   properties: {
     name?: string;
@@ -46,7 +46,8 @@ export interface CityAutocompleteProps {
   placeholder?: string;
 }
 
-const PHOTON_ENDPOINT = "https://photon.komoot.io/api/";
+// IMPORTANT: now we hit our own API route, not Photon directly
+const CITY_SEARCH_ENDPOINT = "/api/city-search";
 
 export function CityAutocomplete({
   countryCode,
@@ -92,21 +93,22 @@ export function CityAutocomplete({
           q: trimmed,
           limit: "10",
           lang: "en",
+          countryCode, // pass ISO code to server so Nominatim can filter
         });
 
-        const res = await fetch(`${PHOTON_ENDPOINT}?${params.toString()}`);
+        const res = await fetch(`/api/city-search?${params.toString()}`);
 
         if (!res.ok) {
           console.error(
-            "Photon city search error",
+            "City search API error",
             res.status,
-            await res.text()
+            await res.text().catch(() => "<no-body>")
           );
           if (active) setOptions([]);
           return;
         }
 
-        const data = (await res.json()) as PhotonResponse;
+        const data = (await res.json()) as { features: PhotonFeature[] };
         if (!active) return;
 
         const isoLower = countryCode.toLowerCase();
@@ -115,6 +117,7 @@ export function CityAutocomplete({
           .filter((feature) => {
             const p = feature.properties || {};
 
+            // still filter by country as before
             if (p.countrycode && p.countrycode.toLowerCase() !== isoLower) {
               return false;
             }
@@ -150,7 +153,7 @@ export function CityAutocomplete({
             const displayName = displayNameParts.join(", ");
 
             return {
-              id: `${feature.properties.osm_id ?? idx}-${lat},${lng}`,
+              id: `${p.osm_id ?? idx}-${lat},${lng}`,
               name,
               displayName,
               lat,
@@ -176,13 +179,13 @@ export function CityAutocomplete({
       } finally {
         if (active) setLoading(false);
       }
-    }, 300); // debounce
+    }, 300);
 
     return () => {
       active = false;
       clearTimeout(handle);
     };
-  }, [countryCode, inputValue]); // <-- removed onChange here
+  }, [countryCode, inputValue]);
 
   const disabled = !countryCode;
 
