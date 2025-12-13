@@ -6,13 +6,15 @@ import { Box, Container, Typography, CircularProgress } from "@mui/material";
 import MenuBar from "@/components/MenuBar";
 import SearchBreadcrumb from "@/components/SearchBreadcrumb";
 import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
-import { db } from "@/firebase";
+import { auth, db } from "@/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
 import { OfferDoc, HostProfile, PricingTier } from "./types";
 import OfferLeftColumn from "./OfferLeftColumn";
-import ContactSellerDialog from "./ContactSellerDialog";
 import OfferRightPricingCard from "./OfferRightPricingCard";
+
+// ✅ Messaging helper you implemented
+import { getOrCreateConversation } from "@/lib/messaging";
 
 const tierOrder: Record<string, number> = {
   basic: 0,
@@ -33,7 +35,9 @@ export default function OfferDetailPage({
   const [loading, setLoading] = useState(true);
 
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
-  const [contactOpen, setContactOpen] = useState(false);
+
+  // Prevent double-click creating multiple chats
+  const [contacting, setContacting] = useState(false);
 
   // ---- Load offer + host ----
   useEffect(() => {
@@ -50,7 +54,6 @@ export default function OfferDetailPage({
         }
 
         const data = { id: snap.id, ...snap.data() } as OfferDoc;
-        console.log(data);
         setOffer(data);
 
         // Load seller profile
@@ -60,7 +63,7 @@ export default function OfferDetailPage({
           if (userSnap.exists()) {
             const u = userSnap.data() as any;
 
-            // 🔹 Use updatedAt (fallback to createdAt) and only show date part
+            // Use updatedAt (fallback to createdAt) and only show date part
             let memberSinceLabel: string | undefined;
             const ts = u.updatedAt ?? u.createdAt;
             if (ts?.toDate) {
@@ -107,6 +110,7 @@ export default function OfferDetailPage({
         .sort((a, b) => (tierOrder[a.id] ?? 99) - (tierOrder[b.id] ?? 99)) ||
       [];
 
+    // Fallback: if no structured tiers but offer.price exists
     if (tiers.length === 0 && (offer as any)?.price != null) {
       const basicPrice = (offer as any).price as number;
       return [
@@ -129,6 +133,57 @@ export default function OfferDetailPage({
       setSelectedTierId(pricingTiers[0].id);
     }
   }, [pricingTiers, selectedTierId]);
+
+  // ✅ NEW: Contact -> open/create conversation -> route to messages
+  const handleContactSeller = async () => {
+    if (!offer) return;
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      // Not logged in -> go sign in
+      window.location.href = "/authentication/sign-in";
+      return;
+    }
+
+    // Prevent messaging yourself
+    if (offer.uid && currentUser.uid === offer.uid) {
+      window.location.href = "/messages";
+      return;
+    }
+
+    if (!offer.uid) {
+      console.error(
+        "Offer has no uid (seller uid). Cannot start conversation."
+      );
+      return;
+    }
+
+    if (contacting) return;
+
+    try {
+      setContacting(true);
+
+      const cover =
+        offer.portfolio?.coverImageURL ||
+        offer.coverImageURL ||
+        offer.imageURL ||
+        null;
+
+      const conversationId = await getOrCreateConversation({
+        offerId: offer.id,
+        offerTitle: offer.title || "Offer",
+        offerCoverImageURL: cover,
+        hostUid: offer.uid, // seller
+        guestUid: currentUser.uid, // current user
+      });
+
+      window.location.href = `/messages/${conversationId}`;
+    } catch (err) {
+      console.error("Failed to open conversation:", err);
+    } finally {
+      setContacting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -210,25 +265,17 @@ export default function OfferDetailPage({
             offer={offer}
             host={host}
             pricingTiers={pricingTiers}
-            onContact={() => setContactOpen(true)}
+            onContact={handleContactSeller}
           />
 
           <OfferRightPricingCard
             pricingTiers={pricingTiers}
             selectedTierId={selectedTierId}
             onSelectedTierChange={setSelectedTierId}
-            onContact={() => setContactOpen(true)}
+            onContact={handleContactSeller}
           />
         </Box>
       </Container>
-
-      {/* Contact dialog */}
-      <ContactSellerDialog
-        open={contactOpen}
-        onClose={() => setContactOpen(false)}
-        offer={offer}
-        host={host}
-      />
     </Box>
   );
 }

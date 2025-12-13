@@ -14,16 +14,28 @@ import {
   Avatar,
   Container,
   GlobalStyles,
+  Badge,
 } from "@mui/material";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import QuestionAnswerIcon from "@mui/icons-material/QuestionAnswer";
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+  limit,
+} from "firebase/firestore";
 
 const COLOR_NAVY_DARK = "#2D3250";
 const COLOR_NAVY = "#424769";
 const COLOR_WHITE = "#FFFFFF";
+const COLOR_ACCENT = "#f6a76a"; // accent bubble color
 
 export default function MenuBar() {
   const router = useRouter();
@@ -33,28 +45,86 @@ export default function MenuBar() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
 
-  // --- Check login + load Firestore profile image ---
+  // 🔹 unread badge count
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // --- Check login + load Firestore profile image + listen for unread convos ---
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeConvos: null | (() => void) = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+
+      // cleanup old listener when switching users/logging out
+      if (unsubscribeConvos) {
+        unsubscribeConvos();
+        unsubscribeConvos = null;
+      }
 
       if (currentUser) {
         try {
+          // profile image load
           const userDoc = await getDoc(doc(db, "users", currentUser.uid));
           if (userDoc.exists()) {
             const data = userDoc.data() as any;
             if (data.profileImage) setProfileImage(data.profileImage);
             else if (data.photoURL) setProfileImage(data.photoURL);
+          } else {
+            setProfileImage(null);
           }
         } catch (err) {
           console.error("Error fetching user profile image:", err);
         }
+
+        // 🔹 unread conversations/messages listener
+        // Requires an index: participantIds (array-contains) + updatedAt (desc)
+        try {
+          const q = query(
+            collection(db, "conversations"),
+            where("participantIds", "array-contains", currentUser.uid),
+            orderBy("updatedAt", "desc"),
+            limit(50)
+          );
+
+          unsubscribeConvos = onSnapshot(
+            q,
+            (snap) => {
+              let total = 0;
+
+              snap.forEach((d) => {
+                const data = d.data() as any;
+
+                // ✅ If your schema is: unreadCounts: { [uid]: number }
+                const map =
+                  data.unreadCounts ||
+                  data.unreadCountByUser ||
+                  data.unreadCountMap;
+                console.log(map);
+                const n = map?.[currentUser.uid];
+                if (typeof n === "number") total += n;
+              });
+
+              setUnreadCount(total);
+            },
+            (err) => {
+              console.error("Error listening to conversations:", err);
+              setUnreadCount(0);
+            }
+          );
+        } catch (err) {
+          console.error("Error wiring conversations listener:", err);
+          setUnreadCount(0);
+        }
       } else {
         setProfileImage(null);
+        setUnreadCount(0);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeConvos) unsubscribeConvos();
+    };
   }, []);
 
   // --- Handlers ---
@@ -90,6 +160,11 @@ export default function MenuBar() {
   const handleSignIn = () => {
     handleClose();
     router.push("/authentication/sign-in");
+  };
+
+  const handleMessages = () => {
+    handleClose();
+    router.push("/messages");
   };
 
   // --- UI ---
@@ -217,7 +292,7 @@ export default function MenuBar() {
               </Box>
             </Box>
 
-            {/* Right: small pill with avatar (if logged in) + hamburger */}
+            {/* Right: small pill with avatar (if logged in) + messages icon + hamburger */}
             <Box
               sx={{
                 ml: 2,
@@ -247,6 +322,41 @@ export default function MenuBar() {
                       "U")) ||
                     null}
                 </Avatar>
+              )}
+
+              {/* 🔹 Messages icon (only when logged in) */}
+              {user && (
+                <IconButton
+                  onClick={handleMessages}
+                  sx={{
+                    color: COLOR_WHITE,
+                    p: 0.75,
+                    "&:hover": {
+                      backgroundColor: "rgba(255,255,255,0.08)",
+                    },
+                  }}
+                >
+                  <Badge
+                    badgeContent={unreadCount}
+                    invisible={!unreadCount}
+                    overlap="circular"
+                    anchorOrigin={{ vertical: "top", horizontal: "right" }}
+                    sx={{
+                      "& .MuiBadge-badge": {
+                        bgcolor: COLOR_ACCENT,
+                        color: COLOR_NAVY_DARK,
+                        fontWeight: 800,
+                        fontSize: 11,
+                        minWidth: 18,
+                        height: 18,
+                        borderRadius: "999px",
+                        px: 0.5,
+                      },
+                    }}
+                  >
+                    <QuestionAnswerIcon />
+                  </Badge>
+                </IconButton>
               )}
 
               <IconButton
