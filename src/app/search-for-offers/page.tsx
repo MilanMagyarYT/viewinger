@@ -172,6 +172,12 @@ async function fetchOffersCoveringPoint(params: {
   return results;
 }
 
+// ---- Ratings meta ----
+export type OfferRatingMeta = {
+  avg: number;
+  count: number;
+};
+
 // ---- Page ----
 
 export default function AddressStructuredSearchPage() {
@@ -194,6 +200,11 @@ export default function AddressStructuredSearchPage() {
   // uid -> meta (verified + profile image)
   const [listerMeta, setListerMeta] = React.useState<
     Record<string, ListerMeta>
+  >({});
+
+  // offerId -> rating meta
+  const [offerRatings, setOfferRatings] = React.useState<
+    Record<string, OfferRatingMeta>
   >({});
 
   const isFormValid = !!country && !!city && street.trim().length > 0;
@@ -279,6 +290,64 @@ export default function AddressStructuredSearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offers]);
 
+  // ✅ load rating aggregates for offers (buyer->offer reviews)
+  React.useEffect(() => {
+    const loadRatings = async () => {
+      const ids = Array.from(new Set(offers.map((o) => o.id).filter(Boolean)));
+      if (!ids.length) {
+        setOfferRatings({});
+        return;
+      }
+
+      // Firestore "in" max 10
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 10)
+        chunks.push(ids.slice(i, i + 10));
+
+      const agg: Record<string, { sum: number; count: number }> = {};
+
+      try {
+        await Promise.all(
+          chunks.map(async (chunk) => {
+            const snap = await getDocs(
+              query(collection(db, "reviews"), where("offerId", "in", chunk))
+            );
+
+            snap.forEach((d) => {
+              const r = d.data() as any;
+
+              // Only count buyer reviews on offers
+              if (r.role !== "buyer") return;
+
+              const offerId = r.offerId as string | undefined;
+              const rating = Number(r.rating);
+
+              if (!offerId || !Number.isFinite(rating)) return;
+
+              if (!agg[offerId]) agg[offerId] = { sum: 0, count: 0 };
+              agg[offerId].sum += rating;
+              agg[offerId].count += 1;
+            });
+          })
+        );
+
+        const computed: Record<string, OfferRatingMeta> = {};
+        Object.entries(agg).forEach(([offerId, v]) => {
+          if (v.count > 0) {
+            computed[offerId] = { avg: v.sum / v.count, count: v.count };
+          }
+        });
+
+        setOfferRatings(computed);
+      } catch (err) {
+        console.error("Failed to load offer ratings:", err);
+        setOfferRatings({});
+      }
+    };
+
+    loadRatings();
+  }, [offers]);
+
   const mapUrl =
     result != null ? buildOsmEmbedUrl(result.lat, result.lng) : null;
 
@@ -294,15 +363,14 @@ export default function AddressStructuredSearchPage() {
   return (
     <Box
       sx={{
-        width: "100%", // ⬅ avoid 100vw to remove white strip
+        width: "100%",
         minHeight: "100vh",
         backgroundColor: COLORS.white,
       }}
     >
       <MenuBar />
-      {/* Spacer so content starts below fixed AppBar */}
-      <Toolbar /> {/* ⬅ this takes the same height as the AppBar */}
-      {/* Top navy header with breadcrumb + pill search */}
+      <Toolbar />
+
       <SearchHeader
         country={country}
         setCountry={setCountry}
@@ -315,13 +383,14 @@ export default function AddressStructuredSearchPage() {
         onSearch={handleSearch}
         error={error}
       />
-      {/* Map + offers layout */}
+
       <SearchResultsLayout
         result={result}
         mapUrl={mapUrl}
         offers={offers}
         offersLoading={offersLoading}
         listerMeta={listerMeta}
+        offerRatings={offerRatings}
         onOfferClick={handleOfferClick}
         onListerClick={handleListerClick}
       />

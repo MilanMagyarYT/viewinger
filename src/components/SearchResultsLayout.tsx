@@ -1,4 +1,3 @@
-// src/components/SearchResultsLayout.tsx
 "use client";
 
 import * as React from "react";
@@ -15,12 +14,18 @@ import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
 import { GeocodedAddress, OfferHit, ListerMeta } from "@/types/SearchPage";
 import OfferResultCard from "@/components/OfferResultCard";
 
+export type OfferRatingMeta = {
+  avg: number;
+  count: number;
+};
+
 type SearchResultsLayoutProps = {
   result: GeocodedAddress | null;
   mapUrl: string | null;
   offers: OfferHit[];
   offersLoading: boolean;
   listerMeta: Record<string, ListerMeta>;
+  offerRatings: Record<string, OfferRatingMeta>;
   onOfferClick: (offerId: string) => void;
   onListerClick?: (uid: string | undefined) => void;
 };
@@ -34,6 +39,7 @@ export default function SearchResultsLayout({
   offers,
   offersLoading,
   listerMeta,
+  offerRatings,
   onOfferClick,
   onListerClick,
 }: SearchResultsLayoutProps) {
@@ -184,17 +190,6 @@ export default function SearchResultsLayout({
                   >
                     <ViewModuleRounded fontSize="small" />
                   </IconButton>
-                  {/* List view (placeholder, not active yet) */}
-                  {/* <IconButton
-                    size="small"
-                    disableRipple
-                    sx={{
-                      color: COLORS.muted,
-                      "&:hover": { bgcolor: "transparent" },
-                    }}
-                  >
-                    <ViewListRounded fontSize="small" />
-                  </IconButton> */}
                 </Box>
               </Box>
             </Box>
@@ -236,12 +231,14 @@ export default function SearchResultsLayout({
                   {offers.map((offer) => {
                     const uid = offer.uid;
                     const meta = uid ? listerMeta[uid] : undefined;
+                    const ratingMeta = offerRatings?.[offer.id];
 
                     return (
                       <OfferResultCard
                         key={offer.id}
                         offer={offer}
                         meta={meta}
+                        ratingMeta={ratingMeta}
                         onOfferClick={() => onOfferClick(offer.id)}
                         onListerClick={onListerClick}
                       />

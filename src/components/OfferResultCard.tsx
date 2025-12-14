@@ -9,9 +9,15 @@ import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
 import { OfferHit, ListerMeta } from "@/types/SearchPage";
 import EuroIcon from "@mui/icons-material/Euro";
 
+type OfferRatingMeta = {
+  avg: number;
+  count: number;
+};
+
 type OfferResultCardProps = {
   offer: OfferHit;
   meta?: ListerMeta;
+  ratingMeta?: OfferRatingMeta; // ✅ NEW
   onOfferClick: () => void;
   onListerClick?: (uid: string | undefined) => void;
 };
@@ -19,15 +25,12 @@ type OfferResultCardProps = {
 export default function OfferResultCard({
   offer,
   meta,
+  ratingMeta, // ✅ NEW
   onOfferClick,
   onListerClick,
 }: OfferResultCardProps) {
   const isVerified = meta?.isVerified === true;
   const avatarSrc = meta?.profileImage || undefined;
-
-  // placeholder rating UI
-  const ratingValue = 4.5;
-  const ratingCount = 27;
 
   const handleNameClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -46,7 +49,7 @@ export default function OfferResultCard({
         position: "relative",
         display: "flex",
         flexDirection: "column",
-        height: 260, // reduced height (~25% less than the earlier tall card)
+        height: 260,
         transition: "transform 0.15s ease, box-shadow 0.15s ease",
         "&:hover": {
           transform: "translateY(-2px)",
@@ -111,25 +114,27 @@ export default function OfferResultCard({
       >
         {/* Name row with verification badge */}
         <Stack direction="row" alignItems="center" spacing={1}>
-          {/* Verification icon styled similar to the design */}
-          <Box
-            sx={{
-              width: 18,
-              height: 18,
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              color: COLORS.accent,
-            }}
-          >
-            <VerifiedIcon
+          {/* ✅ Only show verified icon if verified */}
+          {isVerified && (
+            <Box
               sx={{
-                fontSize: 20,
+                width: 18,
+                height: 18,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                color: COLORS.accent,
               }}
-            />
-          </Box>
+            >
+              <VerifiedIcon
+                sx={{
+                  fontSize: 20,
+                }}
+              />
+            </Box>
+          )}
 
           <Typography
             variant="subtitle1"
@@ -169,24 +174,42 @@ export default function OfferResultCard({
             justifyContent: "space-between",
           }}
         >
-          {/* Rating */}
+          {/* ✅ Rating (dynamic if available) */}
           <Box
             sx={{
               display: "flex",
               alignItems: "center",
               gap: 0.5,
+              minWidth: 0,
             }}
           >
             <StarRounded fontSize="small" sx={{ color: COLORS.accent }} />
-            <Typography
-              variant="body2"
-              sx={{ color: COLORS.accent, fontWeight: 600 }}
-            >
-              {ratingValue.toFixed(1)}
-            </Typography>
-            <Typography variant="body2" sx={{ color: COLORS.muted }}>
-              ({ratingCount})
-            </Typography>
+
+            {ratingMeta && ratingMeta.count > 0 ? (
+              <>
+                <Typography
+                  variant="body2"
+                  sx={{ color: COLORS.accent, fontWeight: 600 }}
+                >
+                  {ratingMeta.avg.toFixed(1)}
+                </Typography>
+                <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                  ({ratingMeta.count})
+                </Typography>
+              </>
+            ) : (
+              <Typography
+                variant="body2"
+                sx={{
+                  color: COLORS.muted,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                No reviews yet
+              </Typography>
+            )}
           </Box>
 
           {/* Price */}
@@ -212,8 +235,8 @@ export default function OfferResultCard({
             >
               <EuroIcon
                 sx={{
-                  fontSize: "1.1rem", // roughly matches text height
-                  mt: "1px", // tiny nudge so it aligns on the baseline
+                  fontSize: "1.1rem",
+                  mt: "1px",
                 }}
               />
               {offer.price}

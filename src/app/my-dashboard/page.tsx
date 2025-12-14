@@ -9,6 +9,7 @@ import {
   Snackbar,
   Alert,
   Container,
+  Stack,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import {
@@ -33,8 +34,10 @@ import DashboardProfileColumn, {
 } from "./DashboardProfileColumn";
 import ProfileEditDialog from "./ProfileEditDialog";
 import DashboardOffersColumn from "./DashboardOffersColumn";
+import DashboardBookingsColumn from "./DashboardBookingsColumn";
 import { Offer } from "@/types/Offer";
 import SearchBreadcrumb from "@/components/SearchBreadcrumb";
+import type { BookingDoc } from "@/types/bookings";
 
 export default function MyDashboardPage() {
   const router = useRouter();
@@ -60,6 +63,9 @@ export default function MyDashboardPage() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(true);
 
+  const [bookings, setBookings] = useState<BookingDoc[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(true);
+
   const [editOpen, setEditOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
@@ -76,6 +82,7 @@ export default function MyDashboardPage() {
         setUser(currentUser);
         await fetchUserProfile(currentUser);
         await fetchOffers(currentUser.uid);
+        await fetchBookings(currentUser.uid);
       }
       setLoadingAuth(false);
     });
@@ -121,7 +128,6 @@ export default function MyDashboardPage() {
 
         setIsVerified(!!data.isVerified);
       } else {
-        // first login
         setProfile((p) => ({
           ...p,
           name: u.displayName || "",
@@ -149,6 +155,39 @@ export default function MyDashboardPage() {
       console.error("Error fetching offers:", err);
     } finally {
       setLoadingOffers(false);
+    }
+  };
+
+  // -------- BOOKINGS FETCH --------
+  const fetchBookings = async (uid: string) => {
+    try {
+      setLoadingBookings(true);
+      const bookingsCol = collection(dbInstance, "bookings");
+
+      const q = query(
+        bookingsCol,
+        where("participantIds", "array-contains", uid)
+      );
+      const snap = await getDocs(q);
+
+      const raw = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as any),
+      })) as BookingDoc[];
+
+      // sort locally by updatedAt/createdAt desc
+      const sorted = raw.sort((a: any, b: any) => {
+        const at = a.updatedAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
+        const bt = b.updatedAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0;
+        return bt - at;
+      });
+
+      setBookings(sorted);
+    } catch (err) {
+      console.error("Error fetching bookings:", err);
+      setBookings([]);
+    } finally {
+      setLoadingBookings(false);
     }
   };
 
@@ -301,14 +340,7 @@ export default function MyDashboardPage() {
       <MenuBar />
 
       {/* Header band with breadcrumb */}
-      <Box
-        sx={{
-          bgcolor: COLORS.navyDark,
-          pt: 6,
-          pb: 4,
-          mt: "3rem",
-        }}
-      >
+      <Box sx={{ bgcolor: COLORS.navyDark, pt: 6, pb: 4, mt: "3rem" }}>
         <Container maxWidth="lg">
           <SearchBreadcrumb current="Dashboard" />
 
@@ -337,7 +369,7 @@ export default function MyDashboardPage() {
             gap: 3,
           }}
         >
-          {/* LEFT COLUMN – ~20% width on desktop */}
+          {/* LEFT COLUMN */}
           <Box
             sx={{
               flexBasis: { xs: "100%", md: "22%" },
@@ -353,7 +385,7 @@ export default function MyDashboardPage() {
             />
           </Box>
 
-          {/* RIGHT COLUMN – ~80% width on desktop */}
+          {/* RIGHT COLUMN */}
           <Box
             sx={{
               flexBasis: { xs: "100%", md: "78%" },
@@ -361,14 +393,30 @@ export default function MyDashboardPage() {
               flexGrow: 1,
             }}
           >
-            <DashboardOffersColumn
-              offers={offers}
-              loadingOffers={loadingOffers}
-              onCreateOffer={() => router.push("/create-an-offer")}
-              onViewOffer={(id) => router.push(`/search-for-offers/${id}`)} // adjust route if needed
-              onEditOffer={(id) => router.push(`/edit-offer/${id}`)}
-              onDeleteOffer={handleDeleteOffer}
-            />
+            <Stack spacing={2}>
+              {user && (
+                <DashboardBookingsColumn
+                  currentUid={user.uid}
+                  bookings={bookings}
+                  loading={loadingBookings}
+                  onViewAll={() => router.push("/bookings")}
+                  onOpenConversation={(cid) => router.push(`/message/${cid}`)}
+                  onViewOffer={(oid) =>
+                    router.push(`/search-for-offers/${oid}`)
+                  }
+                  onRefresh={() => fetchBookings(user.uid)}
+                />
+              )}
+
+              <DashboardOffersColumn
+                offers={offers}
+                loadingOffers={loadingOffers}
+                onCreateOffer={() => router.push("/create-an-offer")}
+                onViewOffer={(id) => router.push(`/search-for-offers/${id}`)}
+                onEditOffer={(id) => router.push(`/edit-offer/${id}`)}
+                onDeleteOffer={handleDeleteOffer}
+              />
+            </Stack>
           </Box>
         </Box>
       </Container>

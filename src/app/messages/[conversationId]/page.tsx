@@ -1,3 +1,4 @@
+// src/app/message/[conversationId]/page.tsx
 "use client";
 
 import * as React from "react";
@@ -17,6 +18,7 @@ import ChatThread from "../ChatThread";
 import MessageComposer from "../MessageComposer";
 import { markConversationRead, sendMessage } from "@/lib/messaging";
 import type { ConversationDoc } from "@/types/messaging";
+import BookOfferDialog from "../BookOfferDialog";
 
 export default function ConversationPage({
   params,
@@ -34,6 +36,12 @@ export default function ConversationPage({
   const [loadingConv, setLoadingConv] = React.useState(true);
 
   const [text, setText] = React.useState("");
+
+  // booking dialog
+  const [bookOpen, setBookOpen] = React.useState(false);
+  const [offerTitle, setOfferTitle] = React.useState<string | undefined>(
+    undefined
+  );
 
   React.useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -60,7 +68,6 @@ export default function ConversationPage({
         }
         const c = { id: snap.id, ...(snap.data() as any) } as ConversationDoc;
 
-        // Basic guard: if user is not participant, kick them out
         if (!c.participantIds?.includes(uid)) {
           router.replace("/messages");
           return;
@@ -70,6 +77,15 @@ export default function ConversationPage({
 
         // mark as read on open
         await markConversationRead(conversationId, uid);
+
+        // optional: fetch offer title for booking dialog
+        if (c.offerId) {
+          const offerSnap = await getDoc(doc(db, "offers", c.offerId));
+          if (offerSnap.exists()) {
+            const d = offerSnap.data() as any;
+            setOfferTitle(d.title ?? undefined);
+          }
+        }
       } finally {
         setLoadingConv(false);
       }
@@ -121,6 +137,8 @@ export default function ConversationPage({
     });
   };
 
+  const canBook = uid === conversation.guestUid; // guest initiates booking (MVP)
+
   return (
     <Box
       sx={{
@@ -146,9 +164,9 @@ export default function ConversationPage({
               <ChatThread
                 conversationId={conversationId}
                 currentUid={uid}
-                offerId={(conversation as any).offerId || null}
+                offerId={conversation.offerId}
+                onBookClick={canBook ? () => setBookOpen(true) : undefined}
               />
-
               <MessageComposer
                 value={text}
                 onChange={setText}
@@ -159,6 +177,14 @@ export default function ConversationPage({
           }
         />
       </Container>
+
+      <BookOfferDialog
+        open={bookOpen}
+        onClose={() => setBookOpen(false)}
+        conversation={conversation}
+        currentUid={uid}
+        offerTitle={offerTitle}
+      />
     </Box>
   );
 }

@@ -360,7 +360,7 @@ export default function DashboardProfileColumn({
                 return (
                   <Box
                     key={c.id}
-                    onClick={() => router.push(`/message/${c.id}`)}
+                    onClick={() => router.push(`/messages/${c.id}`)}
                     sx={{
                       cursor: "pointer",
                       borderRadius: "14px",

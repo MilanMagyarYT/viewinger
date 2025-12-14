@@ -1,4 +1,3 @@
-// src/app/search-for-offers/[offerId]/OfferLeftColumn.tsx
 "use client";
 
 import * as React from "react";
@@ -18,37 +17,49 @@ import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import { VIEWINGER_COLORS as COLORS } from "@/styles/colors";
 import { HostProfile, OfferDoc, PricingTier } from "./types";
 
-const HARD_CODED_RATING = {
-  score: 4.87,
-  reviewsCount: 27,
-};
+import { db } from "@/firebase";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 
-const MOCK_REVIEWS = [
-  {
-    id: "r1",
-    name: "James van Doren",
-    country: "United Kingdom",
-    rating: 5,
-    avatarLetter: "J",
-    comment:
-      "Edina was incredibly thorough during my viewing. She noticed details I would have completely missed and sent me a very clear video report afterwards.",
-    dateLabel: "February 2025",
-  },
-  {
-    id: "r2",
-    name: "Sara Müller",
-    country: "Germany",
-    rating: 4.8,
-    avatarLetter: "S",
-    comment:
-      "Very responsive and friendly. I felt confident making a decision from abroad thanks to her notes and photos.",
-    dateLabel: "January 2025",
-  },
-];
+type OfferReview = {
+  id: string;
+  bookingId?: string;
+  offerId: string;
+  authorUid: string;
+  targetUid?: string;
+  role?: "buyer" | "seller";
+  rating: number;
+  comment: string;
+  createdAt?: any; // Firestore Timestamp
+  // hydrated for UI:
+  authorName?: string;
+  authorCountry?: string;
+  authorPhoto?: string;
+};
 
 function formatPrice(price?: number | null) {
   if (price == null) return "";
   return `€${price}`;
+}
+
+function formatReviewDate(ts: any) {
+  const d = ts?.toDate?.() as Date | undefined;
+  if (!d) return "";
+  return d.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function getInitialLetter(name?: string) {
+  const trimmed = (name || "").trim();
+  return trimmed ? trimmed.charAt(0).toUpperCase() : "U";
 }
 
 interface Props {
@@ -74,6 +85,96 @@ export default function OfferLeftColumn({
 
   const videoUrl = offer.portfolio?.videoURL ?? offer.videoUrl ?? null;
 
+  // ---------- Reviews (real) ----------
+  const [reviews, setReviews] = React.useState<OfferReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setReviewsLoading(true);
+      try {
+        // Pull all reviews for this offer. (No orderBy to avoid needing an index.)
+        const snap = await getDocs(
+          query(collection(db, "reviews"), where("offerId", "==", offer.id))
+        );
+
+        // Only show buyer reviews on the offer page
+        const base = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) } as OfferReview))
+          .filter((r) => r.role === "buyer");
+
+        // Sort client-side by createdAt desc
+        base.sort((a, b) => {
+          const am = a.createdAt?.toMillis?.() ?? 0;
+          const bm = b.createdAt?.toMillis?.() ?? 0;
+          return bm - am;
+        });
+
+        // Hydrate author info (name/country/photo) from users collection
+        const uniqueAuthorUids = Array.from(
+          new Set(base.map((r) => r.authorUid).filter(Boolean))
+        );
+
+        const authorMap = new Map<
+          string,
+          { name?: string; country?: string; photo?: string }
+        >();
+
+        await Promise.all(
+          uniqueAuthorUids.map(async (uid) => {
+            try {
+              const uSnap = await getDoc(doc(db, "users", uid));
+              if (!uSnap.exists()) return;
+
+              const u = uSnap.data() as any;
+              authorMap.set(uid, {
+                name: u.name ?? u.displayName ?? u.legalName ?? "User",
+                country:
+                  u.baseCountry ?? u.country ?? u.countryOfResidence ?? "",
+                photo: u.profileImage ?? u.photoURL ?? "",
+              });
+            } catch {
+              // ignore per-user failures
+            }
+          })
+        );
+
+        const hydrated = base.map((r) => {
+          const a = authorMap.get(r.authorUid);
+          return {
+            ...r,
+            authorName: a?.name,
+            authorCountry: a?.country,
+            authorPhoto: a?.photo,
+          };
+        });
+
+        if (!cancelled) setReviews(hydrated);
+      } catch (err) {
+        console.error("Error loading reviews:", err);
+        if (!cancelled) setReviews([]);
+      } finally {
+        if (!cancelled) setReviewsLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [offer.id]);
+
+  const ratingSummary = React.useMemo(() => {
+    const count = reviews.length;
+    if (!count) return { avg: null as number | null, count: 0 };
+    const sum = reviews.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+    const avg = sum / count;
+    return { avg, count };
+  }, [reviews]);
+
+  // ---------- UI ----------
   return (
     <Box sx={{ flexBasis: { xs: "100%", md: "60%" }, flexGrow: 1 }}>
       {/* Title */}
@@ -117,14 +218,29 @@ export default function OfferLeftColumn({
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
             {hostName}
           </Typography>
+
           <Stack direction="row" spacing={1} alignItems="center">
             <StarRoundedIcon sx={{ fontSize: 18, color: "#FFC857" }} />
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {HARD_CODED_RATING.score.toFixed(2)}
-            </Typography>
-            <Typography variant="body2" sx={{ color: COLORS.muted }}>
-              ({HARD_CODED_RATING.reviewsCount} reviews)
-            </Typography>
+
+            {reviewsLoading ? (
+              <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                Loading…
+              </Typography>
+            ) : ratingSummary.count ? (
+              <>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {ratingSummary.avg!.toFixed(2)}
+                </Typography>
+                <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                  ({ratingSummary.count} review
+                  {ratingSummary.count === 1 ? "" : "s"})
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                No reviews yet
+              </Typography>
+            )}
           </Stack>
         </Box>
       </Paper>
@@ -183,7 +299,7 @@ export default function OfferLeftColumn({
         </Paper>
       </Box>
 
-      {/* Reviews section (hard-coded for now) */}
+      {/* Reviews section (NOW REAL) */}
       <Box sx={{ mb: 4 }}>
         <Typography
           variant="h5"
@@ -192,69 +308,91 @@ export default function OfferLeftColumn({
           What people wrote about this offer
         </Typography>
 
-        {MOCK_REVIEWS.map((r) => (
+        {reviewsLoading ? (
+          <Typography variant="body2" sx={{ color: COLORS.muted }}>
+            Loading reviews…
+          </Typography>
+        ) : reviews.length === 0 ? (
           <Paper
-            key={r.id}
             elevation={0}
             sx={{
               borderRadius: "16px",
-              border: `2px solid ${COLORS.navyDark}`,
+              border: `2px dashed rgba(0,0,0,0.12)`,
               p: 2.5,
-              mb: 2,
+              color: COLORS.muted,
             }}
           >
-            <Stack direction="row" spacing={2}>
-              <Avatar
-                sx={{
-                  width: 44,
-                  height: 44,
-                  bgcolor: COLORS.navy,
-                  flexShrink: 0,
-                }}
-              >
-                {r.avatarLetter}
-              </Avatar>
-
-              <Box sx={{ flex: 1 }}>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="flex-start"
-                  sx={{ mb: 0.5 }}
-                >
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      {r.name}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: COLORS.muted }}>
-                      {r.country}
-                    </Typography>
-                  </Box>
-                  <Stack direction="row" spacing={0.5} alignItems="center">
-                    <StarRoundedIcon sx={{ fontSize: 18, color: "#FFC857" }} />
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {r.rating.toFixed(1)}
-                    </Typography>
-                  </Stack>
-                </Stack>
-
-                <Typography
-                  variant="body2"
+            No reviews yet — once a booking is completed, buyers can leave
+            feedback here.
+          </Paper>
+        ) : (
+          reviews.map((r) => (
+            <Paper
+              key={r.id}
+              elevation={0}
+              sx={{
+                borderRadius: "16px",
+                border: `2px solid ${COLORS.navyDark}`,
+                p: 2.5,
+                mb: 2,
+              }}
+            >
+              <Stack direction="row" spacing={2}>
+                <Avatar
+                  src={r.authorPhoto || undefined}
                   sx={{
-                    color: COLORS.muted,
-                    mb: 1,
+                    width: 44,
+                    height: 44,
+                    bgcolor: COLORS.navy,
+                    flexShrink: 0,
                   }}
                 >
-                  {r.comment}
-                </Typography>
+                  {getInitialLetter(r.authorName)}
+                </Avatar>
 
-                <Typography variant="caption" sx={{ color: COLORS.muted }}>
-                  {r.dateLabel}
-                </Typography>
-              </Box>
-            </Stack>
-          </Paper>
-        ))}
+                <Box sx={{ flex: 1 }}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="flex-start"
+                    sx={{ mb: 0.5 }}
+                  >
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        {r.authorName || "User"}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                        {r.authorCountry || "—"}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      <StarRoundedIcon
+                        sx={{ fontSize: 18, color: "#FFC857" }}
+                      />
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {(Number(r.rating) || 0).toFixed(1)}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: COLORS.muted,
+                      mb: 1,
+                    }}
+                  >
+                    {r.comment}
+                  </Typography>
+
+                  <Typography variant="caption" sx={{ color: COLORS.muted }}>
+                    {formatReviewDate(r.createdAt)}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Paper>
+          ))
+        )}
       </Box>
 
       {/* About the offer */}
@@ -318,6 +456,7 @@ export default function OfferLeftColumn({
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
                 {hostName}
               </Typography>
+
               <Stack
                 direction="row"
                 spacing={1}
@@ -325,12 +464,26 @@ export default function OfferLeftColumn({
                 sx={{ mb: 1 }}
               >
                 <StarRoundedIcon sx={{ fontSize: 20, color: "#FFC857" }} />
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {HARD_CODED_RATING.score.toFixed(2)}
-                </Typography>
-                <Typography variant="body2" sx={{ color: COLORS.muted }}>
-                  ({HARD_CODED_RATING.reviewsCount} reviews)
-                </Typography>
+
+                {reviewsLoading ? (
+                  <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                    Loading…
+                  </Typography>
+                ) : ratingSummary.count ? (
+                  <>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {ratingSummary.avg!.toFixed(2)}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                      ({ratingSummary.count} review
+                      {ratingSummary.count === 1 ? "" : "s"})
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="body2" sx={{ color: COLORS.muted }}>
+                    No reviews yet
+                  </Typography>
+                )}
               </Stack>
 
               <Button
@@ -500,6 +653,7 @@ export default function OfferLeftColumn({
                       {formatPrice(tier.price)}
                     </Box>
                   </Typography>
+
                   {tier.description && (
                     <Typography variant="body2" sx={{ color: COLORS.muted }}>
                       {tier.description}
