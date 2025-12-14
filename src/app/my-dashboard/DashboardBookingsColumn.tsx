@@ -368,25 +368,6 @@ export default function DashboardBookingsColumn({
 
   return (
     <Box>
-      {/* pill title */}
-      <Box
-        sx={{
-          mb: 1.5,
-          display: "inline-flex",
-          px: 3,
-          py: 1,
-          borderRadius: "999px",
-          bgcolor: COLORS.navyDark,
-          color: COLORS.white,
-          fontWeight: 600,
-          fontSize: 14,
-        }}
-      >
-        <Typography variant="subtitle2" sx={{ fontWeight: 400 }}>
-          Bookings
-        </Typography>
-      </Box>
-
       {/* main container */}
       <Paper
         elevation={6}

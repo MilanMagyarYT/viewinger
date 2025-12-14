@@ -1,7 +1,7 @@
 // src/app/my-dashboard/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -10,6 +10,9 @@ import {
   Alert,
   Container,
   Stack,
+  Tabs,
+  Tab,
+  Paper,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import {
@@ -38,6 +41,8 @@ import DashboardBookingsColumn from "./DashboardBookingsColumn";
 import { Offer } from "@/types/Offer";
 import SearchBreadcrumb from "@/components/SearchBreadcrumb";
 import type { BookingDoc } from "@/types/bookings";
+
+type RightTab = "bookings" | "offers";
 
 export default function MyDashboardPage() {
   const router = useRouter();
@@ -73,6 +78,9 @@ export default function MyDashboardPage() {
 
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
+  // ✅ NEW: Tabs on right side
+  const [rightTab, setRightTab] = useState<RightTab>("bookings");
+
   // -------- AUTH --------
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -88,6 +96,7 @@ export default function MyDashboardPage() {
     });
 
     return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   // -------- PROFILE FETCH --------
@@ -327,6 +336,9 @@ export default function MyDashboardPage() {
     );
   }
 
+  const bookingsCount = bookings.length;
+  const offersCount = offers.length;
+
   // -------- RENDER --------
   return (
     <Box
@@ -393,8 +405,50 @@ export default function MyDashboardPage() {
               flexGrow: 1,
             }}
           >
-            <Stack spacing={2}>
-              {user && (
+            {/* ✅ NEW: Tab header above the content */}
+            <Paper
+              elevation={6}
+              sx={{
+                borderRadius: "20px",
+                bgcolor: COLORS.navyDark,
+                color: COLORS.white,
+                px: 2,
+                py: 1,
+                mb: 2,
+              }}
+            >
+              <Tabs
+                value={rightTab}
+                onChange={(_e, v) => setRightTab(v)}
+                textColor="inherit"
+                variant="fullWidth"
+                sx={{
+                  minHeight: 0,
+                  "& .MuiTab-root": {
+                    textTransform: "none",
+                    fontWeight: 800,
+                    minHeight: 0,
+                    py: 1,
+                    color: "rgba(255,255,255,0.85)",
+                  },
+                  "& .Mui-selected": {
+                    color: COLORS.white,
+                  },
+                  "& .MuiTabs-indicator": {
+                    backgroundColor: COLORS.accent,
+                    height: 3,
+                    borderRadius: "999px",
+                  },
+                }}
+              >
+                <Tab value="bookings" label={`Bookings (${bookingsCount})`} />
+                <Tab value="offers" label={`Active offers (${offersCount})`} />
+              </Tabs>
+            </Paper>
+
+            {/* ✅ NEW: Content switches under the tabs */}
+            {rightTab === "bookings" ? (
+              user && (
                 <DashboardBookingsColumn
                   currentUid={user.uid}
                   bookings={bookings}
@@ -406,8 +460,8 @@ export default function MyDashboardPage() {
                   }
                   onRefresh={() => fetchBookings(user.uid)}
                 />
-              )}
-
+              )
+            ) : (
               <DashboardOffersColumn
                 offers={offers}
                 loadingOffers={loadingOffers}
@@ -416,7 +470,7 @@ export default function MyDashboardPage() {
                 onEditOffer={(id) => router.push(`/edit-offer/${id}`)}
                 onDeleteOffer={handleDeleteOffer}
               />
-            </Stack>
+            )}
           </Box>
         </Box>
       </Container>
